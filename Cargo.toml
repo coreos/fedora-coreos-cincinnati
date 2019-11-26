@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+    "dumnati",
+#    "graph-builder",
+#    "policy-engine",
+]
