@@ -3,6 +3,7 @@ use failure::Fallible;
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// Single release entry in the Cincinnati update-graph.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub(crate) struct CincinnatiPayload {
     pub(crate) version: String,
@@ -10,6 +11,7 @@ pub(crate) struct CincinnatiPayload {
     pub(crate) payload: String,
 }
 
+/// Cincinnati update-graph, a DAG with releases (nodes) and update paths (edges).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Graph {
     pub(crate) nodes: Vec<CincinnatiPayload>,
@@ -26,11 +28,12 @@ impl Default for Graph {
 }
 
 impl Graph {
+    /// Assemble a graph from release-index and updates metadata.
     pub fn from_metadata(
         releases: Vec<metadata::Release>,
         updates: metadata::UpdatesJSON,
     ) -> Fallible<Self> {
-        let nodes = releases
+        let nodes: Vec<CincinnatiPayload> = releases
             .into_iter()
             .enumerate()
             .map(|(age_index, entry)| {
@@ -70,8 +73,10 @@ impl Graph {
         Ok(graph)
     }
 
-    fn compute_edges(nodes: &Vec<CincinnatiPayload>) -> Fallible<Vec<(u64, u64)>> {
+    /// Compute edges based on graph metadata.
+    fn compute_edges(nodes: &[CincinnatiPayload]) -> Fallible<Vec<(u64, u64)>> {
         use std::collections::BTreeSet;
+        use std::ops::Bound;
 
         // Collect all rollouts and barriers.
         let mut rollouts = BTreeSet::<u64>::new();
@@ -85,7 +90,7 @@ impl Graph {
             }
         }
 
-        // Add edges targeting rollouts, back till the last barrier.
+        // Add edges targeting rollouts, back till the previous barrier.
         let mut edges = vec![];
         for (index, _release) in nodes.iter().enumerate().rev() {
             let age = index as u64;
@@ -93,8 +98,13 @@ impl Graph {
                 continue;
             }
 
-            let last_barrier = barriers.iter().last().cloned().unwrap_or(0);
-            for i in last_barrier..age {
+            let previous_barrier = barriers
+                .range((Bound::Unbounded, Bound::Excluded(age)))
+                .next_back()
+                .cloned()
+                .unwrap_or(0);
+
+            for i in previous_barrier..age {
                 edges.push((i, age))
             }
         }
@@ -102,8 +112,13 @@ impl Graph {
         // Add edges targeting barriers, back till the previous barrier.
         let mut start = 0;
         for target in barriers {
-            for i in start..target {
-                edges.push((i, target))
+            if rollouts.contains(&target) {
+                // This is an in-progress barrier. Rollout logic already took care
+                // of it, nothing to do here.
+            } else {
+                for i in start..target {
+                    edges.push((i, target))
+                }
             }
             start = target;
         }
