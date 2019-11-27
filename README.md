@@ -5,7 +5,7 @@
 
 This repository contains the logic for Fedora CoreOS auto-updates backend.
 
-This service provides an implementation of the [Cincinnati protocol](cincinnati), which is consumed by on-host update agents (like [Zincati](zincati)).
+This service provides an implementation of the [Cincinnati protocol][cincinnati], which is consumed by on-host update agents (like [Zincati][zincati]).
 
 This workspace can be built with `cargo build` and contains the following binaries:
 
