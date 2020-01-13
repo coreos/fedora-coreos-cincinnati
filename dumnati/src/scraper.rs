@@ -3,34 +3,14 @@ use actix::prelude::*;
 use failure::{Error, Fallible};
 use futures::future;
 use futures::prelude::*;
-use prometheus::{IntCounter, IntGauge};
 use reqwest::Method;
-
-lazy_static::lazy_static! {
-    static ref GRAPH_FINAL_EDGES: IntGauge = register_int_gauge!(opts!(
-        "dumnati_gb_scraper_graph_final_edges",
-        "Number of edges in the cached graph, after processing"
-    )).unwrap();
-    static ref GRAPH_FINAL_RELEASES: IntGauge = register_int_gauge!(opts!(
-        "dumnati_gb_scraper_graph_final_releases",
-        "Number of releases in the cached graph, after processing"
-    )).unwrap();
-    static ref LAST_REFRESH: IntGauge = register_int_gauge!(opts!(
-        "dumnati_gb_scraper_graph_last_refresh_timestamp",
-        "UTC timestamp of last graph refresh"
-    )).unwrap();
-    static ref UPSTREAM_SCRAPES: IntCounter = register_int_counter!(opts!(
-        "dumnati_gb_scraper_upstream_scrapes_total",
-        "Total number of upstream scrapes"
-    ))
-    .unwrap();
-}
 
 /// Release scraper.
 #[derive(Clone, Debug)]
 pub struct Scraper {
     graph: graph::Graph,
     hclient: reqwest::r#async::Client,
+    stream: String,
     stream_metadata_url: reqwest::Url,
     release_index_url: reqwest::Url,
 }
@@ -40,12 +20,14 @@ impl Scraper {
     where
         S: Into<String>,
     {
-        let vars = hashmap! { "stream".to_string() => stream.into() };
+        let stream = stream.into();
+        let vars = hashmap! { "stream".to_string() => stream.clone() };
         let releases_json = envsubst::substitute(metadata::RELEASES_JSON, &vars)?;
         let stream_json = envsubst::substitute(metadata::STREAM_JSON, &vars)?;
         let scraper = Self {
             graph: graph::Graph::default(),
             hclient: reqwest::r#async::ClientBuilder::new().build()?,
+            stream,
             release_index_url: reqwest::Url::parse(&releases_json)?,
             stream_metadata_url: reqwest::Url::parse(&stream_json)?,
         };
@@ -114,7 +96,9 @@ impl Handler<RefreshTick> for Scraper {
     type Result = ResponseActFuture<Self, (), Error>;
 
     fn handle(&mut self, _msg: RefreshTick, _ctx: &mut Self::Context) -> Self::Result {
-        UPSTREAM_SCRAPES.inc();
+        crate::UPSTREAM_SCRAPES
+            .with_label_values(&[&self.stream])
+            .inc();
 
         let updates = self.assemble_graph();
 
@@ -123,9 +107,15 @@ impl Handler<RefreshTick> for Scraper {
             .map(|graph, actor, _ctx| {
                 actor.graph = graph;
                 let refresh_timestamp = chrono::Utc::now();
-                LAST_REFRESH.set(refresh_timestamp.timestamp());
-                GRAPH_FINAL_EDGES.set(actor.graph.edges.len() as i64);
-                GRAPH_FINAL_RELEASES.set(actor.graph.nodes.len() as i64);
+                crate::LAST_REFRESH
+                    .with_label_values(&[&actor.stream])
+                    .set(refresh_timestamp.timestamp());
+                crate::GRAPH_FINAL_EDGES
+                    .with_label_values(&[&actor.stream])
+                    .set(actor.graph.edges.len() as i64);
+                crate::GRAPH_FINAL_RELEASES
+                    .with_label_values(&[&actor.stream])
+                    .set(actor.graph.nodes.len() as i64);
             })
             .then(|_r, _actor, ctx| {
                 Self::tick_later(ctx, std::time::Duration::from_secs(30));
@@ -156,7 +146,7 @@ impl Handler<GetCachedGraph> for Scraper {
     type Result = ResponseActFuture<Self, graph::Graph, Error>;
     fn handle(&mut self, msg: GetCachedGraph, _ctx: &mut Self::Context) -> Self::Result {
         use failure::format_err;
-        if msg.stream != "testing" {
+        if msg.stream != self.stream {
             return Box::new(actix::fut::err(format_err!(
                 "unexpected stream '{}'",
                 msg.stream
@@ -167,7 +157,7 @@ impl Handler<GetCachedGraph> for Scraper {
 }
 
 impl Scraper {
-    /// Schedule an immediate refresh the state machine.
+    /// Schedule an immediate refresh of the state machine.
     pub fn tick_now(ctx: &mut Context<Self>) {
         ctx.notify(RefreshTick {})
     }

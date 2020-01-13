@@ -24,8 +24,9 @@ use actix::prelude::*;
 use actix_web::{http::Method, middleware::Logger, server, App};
 use actix_web::{HttpRequest, HttpResponse};
 use failure::{Error, Fallible};
+use futures::future;
 use futures::prelude::*;
-use prometheus::{Histogram, IntCounter};
+use prometheus::{Histogram, IntCounter, IntCounterVec, IntGaugeVec};
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
@@ -48,6 +49,26 @@ lazy_static::lazy_static! {
         prometheus::linear_buckets(0.0, 0.1, 11).unwrap()
     )
     .unwrap();
+    static ref GRAPH_FINAL_EDGES: IntGaugeVec = register_int_gauge_vec!(
+        "dumnati_gb_scraper_graph_final_edges",
+        "Number of edges in the cached graph, after processing",
+        &["stream"]
+    ).unwrap();
+    static ref GRAPH_FINAL_RELEASES: IntGaugeVec = register_int_gauge_vec!(
+        "dumnati_gb_scraper_graph_final_releases",
+        "Number of releases in the cached graph, after processing",
+        &["stream"]
+    ).unwrap();
+    static ref LAST_REFRESH: IntGaugeVec = register_int_gauge_vec!(
+       "dumnati_gb_scraper_graph_last_refresh_timestamp",
+        "UTC timestamp of last graph refresh",
+        &["stream"]
+    ).unwrap();
+    static ref UPSTREAM_SCRAPES: IntCounterVec = register_int_counter_vec!(
+       "dumnati_gb_scraper_upstream_scrapes_total",
+       "Total number of upstream scrapes",
+        &["stream"]
+    ).unwrap();
 }
 
 fn main() -> Fallible<()> {
@@ -58,11 +79,17 @@ fn main() -> Fallible<()> {
 
     let sys = actix::System::new("dumnati");
 
-    let scraper_addr = scraper::Scraper::new("testing")?.start();
+    // TODO(lucab): figure out all configuration params.
+    let streams_cfg = maplit::btreeset!["testing", "stable"];
+    let mut scrapers = HashMap::with_capacity(streams_cfg.len());
+    for stream in streams_cfg {
+        let addr = scraper::Scraper::new(stream)?.start();
+        scrapers.insert(stream.to_string(), addr);
+    }
 
     let node_population = Arc::new(cbloom::Filter::new(10 * 1024 * 1024, 1_000_000));
     let service_state = AppState {
-        scraper_addr,
+        scrapers,
         population: Arc::clone(&node_population),
     };
     let gb_service = service_state.clone();
@@ -112,7 +139,7 @@ fn main() -> Fallible<()> {
 
 #[derive(Clone, Debug)]
 pub(crate) struct AppState {
-    scraper_addr: Addr<scraper::Scraper>,
+    scrapers: HashMap<String, Addr<scraper::Scraper>>,
     population: Arc<cbloom::Filter>,
 }
 
@@ -130,11 +157,12 @@ pub(crate) fn gb_serve_graph(
         .map(String::from)
         .unwrap_or_default();
 
-    let cached_graph = req
-        .state()
-        .scraper_addr
-        .send(scraper::GetCachedGraph { stream })
-        .flatten();
+    let addr = match req.state().scrapers.get(&stream) {
+        None => return Box::new(future::ok(HttpResponse::NotFound().finish())),
+        Some(addr) => addr,
+    };
+
+    let cached_graph = addr.send(scraper::GetCachedGraph { stream }).flatten();
 
     let resp = cached_graph
         .and_then(|graph| policy::pick_basearch(graph, basearch))
@@ -167,14 +195,15 @@ pub(crate) fn pe_serve_graph(
         .map(String::from)
         .unwrap_or_default();
 
+    let addr = match req.state().scrapers.get(&stream) {
+        None => return Box::new(future::ok(HttpResponse::NotFound().finish())),
+        Some(addr) => addr,
+    };
+
     let wariness = compute_wariness(&req.query());
     ROLLOUT_WARINESS.observe(wariness);
 
-    let cached_graph = req
-        .state()
-        .scraper_addr
-        .send(scraper::GetCachedGraph { stream })
-        .flatten();
+    let cached_graph = addr.send(scraper::GetCachedGraph { stream }).flatten();
 
     let resp = cached_graph
         .and_then(|graph| policy::pick_basearch(graph, basearch))
