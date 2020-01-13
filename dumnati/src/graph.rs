@@ -40,7 +40,7 @@ impl Graph {
                 let mut current = CincinnatiPayload {
                     version: entry.version,
                     payload: "".to_string(),
-                    metadata: hashmap! {
+                    metadata: maplit::hashmap! {
                         metadata::AGE_INDEX.to_string() => age_index.to_string(),
                     },
                 };

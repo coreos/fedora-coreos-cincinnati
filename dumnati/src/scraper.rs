@@ -1,16 +1,17 @@
 use crate::{graph, metadata};
 use actix::prelude::*;
 use failure::{Error, Fallible};
-use futures::future;
-use futures::prelude::*;
 use reqwest::Method;
+use std::num::NonZeroU64;
+use std::time::Duration;
 
 /// Release scraper.
 #[derive(Clone, Debug)]
 pub struct Scraper {
     graph: graph::Graph,
-    hclient: reqwest::r#async::Client,
+    hclient: reqwest::Client,
     stream: String,
+    pause_secs: NonZeroU64,
     stream_metadata_url: reqwest::Url,
     release_index_url: reqwest::Url,
 }
@@ -21,12 +22,13 @@ impl Scraper {
         S: Into<String>,
     {
         let stream = stream.into();
-        let vars = hashmap! { "stream".to_string() => stream.clone() };
+        let vars = maplit::hashmap! { "stream".to_string() => stream.clone() };
         let releases_json = envsubst::substitute(metadata::RELEASES_JSON, &vars)?;
         let stream_json = envsubst::substitute(metadata::STREAM_JSON, &vars)?;
         let scraper = Self {
             graph: graph::Graph::default(),
-            hclient: reqwest::r#async::ClientBuilder::new().build()?,
+            hclient: reqwest::ClientBuilder::new().build()?,
+            pause_secs: NonZeroU64::new(30).expect("non-zero pause"),
             stream,
             release_index_url: reqwest::Url::parse(&releases_json)?,
             stream_metadata_url: reqwest::Url::parse(&stream_json)?,
@@ -39,41 +41,65 @@ impl Scraper {
         &self,
         method: reqwest::Method,
         url: reqwest::Url,
-    ) -> Fallible<reqwest::r#async::RequestBuilder> {
+    ) -> Fallible<reqwest::RequestBuilder> {
         let builder = self.hclient.request(method, url);
         Ok(builder)
     }
 
     /// Fetch releases from release-index.
-    fn fetch_releases(&self) -> impl Future<Item = Vec<metadata::Release>, Error = Error> {
-        let url = self.release_index_url.clone();
-        let req = self.new_request(Method::GET, url);
-        future::result(req)
-            .and_then(|req| req.send().from_err())
-            .and_then(|resp| resp.error_for_status().map_err(Error::from))
-            .and_then(|mut resp| resp.json::<metadata::ReleasesJSON>().from_err())
-            .map(|json| json.releases)
+    fn fetch_releases(&self) -> impl Future<Output = Result<Vec<metadata::Release>, Error>> {
+        let target = self.release_index_url.clone();
+        let req = self.new_request(Method::GET, target);
+
+        async {
+            let resp = req?.send().await?;
+            let content = resp.error_for_status()?;
+            let json = content.json::<metadata::ReleasesJSON>().await?;
+            Ok(json.releases)
+        }
     }
 
     /// Fetch updates metadata.
-    fn fetch_updates(&self) -> impl Future<Item = metadata::UpdatesJSON, Error = Error> {
-        let url = self.stream_metadata_url.clone();
-        let req = self.new_request(Method::GET, url);
-        future::result(req)
-            .and_then(|req| req.send().from_err())
-            .and_then(|resp| resp.error_for_status().map_err(Error::from))
-            .and_then(|mut resp| resp.json::<metadata::UpdatesJSON>().from_err())
+    fn fetch_updates(&self) -> impl Future<Output = Result<metadata::UpdatesJSON, Error>> {
+        let target = self.stream_metadata_url.clone();
+        let req = self.new_request(Method::GET, target);
+
+        async {
+            let resp = req?.send().await?;
+            let content = resp.error_for_status()?;
+            let json = content.json::<metadata::UpdatesJSON>().await?;
+            Ok(json)
+        }
     }
 
     /// Combine release-index and updates metadata.
-    fn assemble_graph(&self) -> impl Future<Item = graph::Graph, Error = Error> {
-        let stream_updates = self.fetch_updates();
+    fn assemble_graph(&self) -> impl Future<Output = Result<graph::Graph, Error>> {
         let stream_releases = self.fetch_releases();
+        let stream_updates = self.fetch_updates();
 
-        let updates = stream_releases
-            .join(stream_updates)
-            .and_then(|(graph, updates)| graph::Graph::from_metadata(graph, updates));
-        updates
+        // NOTE(lucab): this inner scope is in order to get a 'static lifetime on
+        //  the future for actix compatibility.
+        async {
+            let (graph, updates) =
+                futures::future::try_join(stream_releases, stream_updates).await?;
+            graph::Graph::from_metadata(graph, updates)
+        }
+    }
+
+    /// Update cached graph.
+    fn update_cached_graph(&mut self, graph: graph::Graph) {
+        self.graph = graph;
+
+        let refresh_timestamp = chrono::Utc::now();
+        crate::LAST_REFRESH
+            .with_label_values(&[&self.stream])
+            .set(refresh_timestamp.timestamp());
+        crate::GRAPH_FINAL_EDGES
+            .with_label_values(&[&self.stream])
+            .set(self.graph.edges.len() as i64);
+        crate::GRAPH_FINAL_RELEASES
+            .with_label_values(&[&self.stream])
+            .set(self.graph.nodes.len() as i64);
     }
 }
 
@@ -89,36 +115,28 @@ impl Actor for Scraper {
 pub(crate) struct RefreshTick {}
 
 impl Message for RefreshTick {
-    type Result = Result<(), Error>;
+    type Result = Result<(), failure::Error>;
 }
 
 impl Handler<RefreshTick> for Scraper {
-    type Result = ResponseActFuture<Self, (), Error>;
+    type Result = ResponseActFuture<Self, Result<(), failure::Error>>;
 
     fn handle(&mut self, _msg: RefreshTick, _ctx: &mut Self::Context) -> Self::Result {
         crate::UPSTREAM_SCRAPES
             .with_label_values(&[&self.stream])
             .inc();
 
-        let updates = self.assemble_graph();
-
-        let update_graph = actix::fut::wrap_future::<_, Self>(updates)
-            .map_err(|err, _actor, _ctx| log::error!("{}", err))
+        let latest_graph = self.assemble_graph();
+        let update_graph = actix::fut::wrap_future::<_, Self>(latest_graph)
             .map(|graph, actor, _ctx| {
-                actor.graph = graph;
-                let refresh_timestamp = chrono::Utc::now();
-                crate::LAST_REFRESH
-                    .with_label_values(&[&actor.stream])
-                    .set(refresh_timestamp.timestamp());
-                crate::GRAPH_FINAL_EDGES
-                    .with_label_values(&[&actor.stream])
-                    .set(actor.graph.edges.len() as i64);
-                crate::GRAPH_FINAL_RELEASES
-                    .with_label_values(&[&actor.stream])
-                    .set(actor.graph.nodes.len() as i64);
+                match graph {
+                    Ok(graph) => actor.update_cached_graph(graph),
+                    Err(e) => log::error!("transient scraping failure: {}", e),
+                };
             })
-            .then(|_r, _actor, ctx| {
-                Self::tick_later(ctx, std::time::Duration::from_secs(30));
+            .then(|_r, actor, ctx| {
+                let pause = Duration::from_secs(actor.pause_secs.get());
+                Self::tick_later(ctx, pause);
                 actix::fut::ok(())
             });
 
@@ -143,7 +161,8 @@ impl Message for GetCachedGraph {
 }
 
 impl Handler<GetCachedGraph> for Scraper {
-    type Result = ResponseActFuture<Self, graph::Graph, Error>;
+    type Result = ResponseActFuture<Self, Result<graph::Graph, Error>>;
+
     fn handle(&mut self, msg: GetCachedGraph, _ctx: &mut Self::Context) -> Self::Result {
         use failure::format_err;
         if msg.stream != self.stream {

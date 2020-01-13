@@ -1,16 +1,5 @@
-extern crate actix;
-extern crate actix_web;
-extern crate env_logger;
-extern crate failure;
-extern crate futures;
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate maplit;
-extern crate serde;
-extern crate serde_derive;
-extern crate serde_json;
-extern crate structopt;
 #[macro_use]
 extern crate prometheus;
 
@@ -21,12 +10,10 @@ mod policy;
 mod scraper;
 
 use actix::prelude::*;
-use actix_web::{http::Method, middleware::Logger, server, App};
-use actix_web::{HttpRequest, HttpResponse};
+use actix_web::{web, App, HttpResponse};
 use failure::{Error, Fallible};
-use futures::future;
-use futures::prelude::*;
 use prometheus::{Histogram, IntCounter, IntCounterVec, IntGaugeVec};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
@@ -49,6 +36,7 @@ lazy_static::lazy_static! {
         prometheus::linear_buckets(0.0, 0.1, 11).unwrap()
     )
     .unwrap();
+
     static ref GRAPH_FINAL_EDGES: IntGaugeVec = register_int_gauge_vec!(
         "dumnati_gb_scraper_graph_final_edges",
         "Number of edges in the cached graph, after processing",
@@ -92,48 +80,48 @@ fn main() -> Fallible<()> {
         scrapers,
         population: Arc::clone(&node_population),
     };
-    let gb_service = service_state.clone();
-    let gb_status = service_state.clone();
-    let pe_service = service_state.clone();
-    let pe_status = service_state.clone();
 
     // Graph-builder service.
-    server::new(move || {
-        App::with_state(gb_service.clone())
-            .middleware(Logger::default())
-            .route("/v1/graph", Method::GET, gb_serve_graph)
+    let gb_service = service_state.clone();
+    actix_web::HttpServer::new(move || {
+        App::new()
+            .data(gb_service.clone())
+            .route("/v1/graph", web::get().to(gb_serve_graph))
     })
     .bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 8080))?
-    .start();
+    .run();
 
     // Graph-builder status service.
-    server::new(move || {
-        App::with_state(gb_status.clone())
-            .middleware(Logger::default())
-            .route("/metrics", Method::GET, metrics::serve_metrics)
+    let gb_status = service_state.clone();
+    actix_web::HttpServer::new(move || {
+        App::new()
+            .data(gb_status.clone())
+            .route("/metrics", web::get().to(metrics::serve_metrics))
     })
     .bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 9080))?
-    .start();
+    .run();
 
     // Policy-engine service.
-    server::new(move || {
-        App::with_state(pe_service.clone())
-            .middleware(Logger::default())
-            .route("/v1/graph", Method::GET, pe_serve_graph)
+    let pe_service = service_state.clone();
+    actix_web::HttpServer::new(move || {
+        App::new()
+            .data(pe_service.clone())
+            .route("/v1/graph", web::get().to(pe_serve_graph))
     })
     .bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 8081))?
-    .start();
+    .run();
 
     // Policy-engine status service.
-    server::new(move || {
-        App::with_state(pe_status.clone())
-            .middleware(Logger::default())
-            .route("/metrics", Method::GET, metrics::serve_metrics)
+    let pe_status = service_state;
+    actix_web::HttpServer::new(move || {
+        App::new()
+            .data(pe_status.clone())
+            .route("/metrics", web::get().to(metrics::serve_metrics))
     })
     .bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 9081))?
-    .start();
+    .run();
 
-    sys.run();
+    sys.run()?;
     Ok(())
 }
 
@@ -143,90 +131,86 @@ pub(crate) struct AppState {
     population: Arc<cbloom::Filter>,
 }
 
-pub(crate) fn gb_serve_graph(
-    req: HttpRequest<AppState>,
-) -> Box<dyn Future<Item = HttpResponse, Error = Error>> {
-    let basearch = req
-        .query()
-        .get("basearch")
-        .map(String::from)
-        .unwrap_or_default();
-    let stream = req
-        .query()
-        .get("stream")
-        .map(String::from)
-        .unwrap_or_default();
-
-    let addr = match req.state().scrapers.get(&stream) {
-        None => return Box::new(future::ok(HttpResponse::NotFound().finish())),
-        Some(addr) => addr,
-    };
-
-    let cached_graph = addr.send(scraper::GetCachedGraph { stream }).flatten();
-
-    let resp = cached_graph
-        .and_then(|graph| policy::pick_basearch(graph, basearch))
-        .map(|graph| policy::filter_deadends(graph))
-        .and_then(|graph| {
-            serde_json::to_string_pretty(&graph).map_err(|e| failure::format_err!("{}", e))
-        })
-        .map(|json| {
-            HttpResponse::Ok()
-                .content_type("application/json")
-                .body(json)
-        });
-
-    Box::new(resp)
+#[derive(Deserialize)]
+pub struct GraphQuery {
+    basearch: Option<String>,
+    stream: Option<String>,
+    rollout_wariness: Option<String>,
+    node_uuid: Option<String>,
 }
 
-pub(crate) fn pe_serve_graph(
-    req: HttpRequest<AppState>,
-) -> Box<dyn Future<Item = HttpResponse, Error = Error>> {
-    pe_record_metrics(&req);
-
-    let basearch = req
-        .query()
-        .get("basearch")
+pub(crate) async fn gb_serve_graph(
+    data: actix_web::web::Data<AppState>,
+    query: actix_web::web::Query<GraphQuery>,
+) -> Result<HttpResponse, failure::Error> {
+    let basearch = query
+        .basearch
+        .as_ref()
         .map(String::from)
         .unwrap_or_default();
-    let stream = req
-        .query()
-        .get("stream")
-        .map(String::from)
-        .unwrap_or_default();
+    let stream = query.stream.as_ref().map(String::from).unwrap_or_default();
 
-    let addr = match req.state().scrapers.get(&stream) {
-        None => return Box::new(future::ok(HttpResponse::NotFound().finish())),
+    let addr = match data.scrapers.get(&stream) {
+        None => return Ok(HttpResponse::NotFound().finish()),
         Some(addr) => addr,
     };
 
-    let wariness = compute_wariness(&req.query());
+    let cached_graph = addr.send(scraper::GetCachedGraph { stream }).await??;
+
+    let arch_graph = policy::pick_basearch(cached_graph, basearch)?;
+    let final_graph = policy::filter_deadends(arch_graph);
+
+    let json =
+        serde_json::to_string_pretty(&final_graph).map_err(|e| failure::format_err!("{}", e))?;
+    let resp = HttpResponse::Ok()
+        .content_type("application/json")
+        .body(json);
+    Ok(resp)
+}
+
+pub(crate) async fn pe_serve_graph(
+    data: actix_web::web::Data<AppState>,
+    actix_web::web::Query(query): actix_web::web::Query<GraphQuery>,
+) -> Result<HttpResponse, Error> {
+    pe_record_metrics(&data, &query);
+
+    let basearch = query
+        .basearch
+        .as_ref()
+        .map(String::from)
+        .unwrap_or_default();
+    let stream = query.stream.as_ref().map(String::from).unwrap_or_default();
+
+    let addr = match data.scrapers.get(&stream) {
+        None => return Ok(HttpResponse::NotFound().finish()),
+        Some(addr) => addr,
+    };
+
+    let wariness = compute_wariness(&query);
     ROLLOUT_WARINESS.observe(wariness);
 
-    let cached_graph = addr.send(scraper::GetCachedGraph { stream }).flatten();
+    let cached_graph = addr.send(scraper::GetCachedGraph { stream }).await??;
 
-    let resp = cached_graph
-        .and_then(|graph| policy::pick_basearch(graph, basearch))
-        .map(move |graph| policy::throttle_rollouts(graph, wariness))
-        .map(|graph| policy::filter_deadends(graph))
-        .and_then(|graph| {
-            serde_json::to_string_pretty(&graph).map_err(|e| failure::format_err!("{}", e))
-        })
-        .map(|json| {
-            HttpResponse::Ok()
-                .content_type("application/json")
-                .body(json)
-        });
+    let arch_graph = policy::pick_basearch(cached_graph, basearch)?;
+    let throttled_graph = policy::throttle_rollouts(arch_graph, wariness);
+    let final_graph = policy::filter_deadends(throttled_graph);
 
-    Box::new(resp)
+    let json =
+        serde_json::to_string_pretty(&final_graph).map_err(|e| failure::format_err!("{}", e))?;
+    let resp = HttpResponse::Ok()
+        .content_type("application/json")
+        .body(json);
+    Ok(resp)
 }
 
-fn compute_wariness(params: &HashMap<String, String>) -> f64 {
+#[allow(clippy::let_and_return)]
+fn compute_wariness(params: &GraphQuery) -> f64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
     if let Ok(input) = params
-        .get("rollout_wariness")
+        .rollout_wariness
+        .as_ref()
         .map(String::from)
         .unwrap_or_default()
         .parse::<f64>()
@@ -236,12 +220,13 @@ fn compute_wariness(params: &HashMap<String, String>) -> f64 {
     }
 
     let uuid = params
-        .get("node_uuid")
+        .node_uuid
+        .as_ref()
         .map(String::from)
         .unwrap_or_default();
     let wariness = {
         // Left limit not included in range.
-        const COMPUTED_MIN: f64 = 0.0 + 0.000001;
+        const COMPUTED_MIN: f64 = 0.0 + 0.000_001;
         const COMPUTED_MAX: f64 = 1.0;
         let mut hasher = DefaultHasher::new();
         uuid.hash(&mut hasher);
@@ -255,19 +240,18 @@ fn compute_wariness(params: &HashMap<String, String>) -> f64 {
     wariness
 }
 
-pub(crate) fn pe_record_metrics(req: &HttpRequest<AppState>) {
+pub(crate) fn pe_record_metrics(data: &AppState, query: &GraphQuery) {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
     V1_GRAPH_INCOMING_REQS.inc();
 
-    let population = &req.state().population;
-    if let Some(uuid) = req.query().get("node_uuid") {
+    if let Some(uuid) = &query.node_uuid {
         let mut hasher = DefaultHasher::default();
         uuid.hash(&mut hasher);
         let client_uuid = hasher.finish();
-        if !population.maybe_contains(client_uuid) {
-            population.insert(client_uuid);
+        if !data.population.maybe_contains(client_uuid) {
+            data.population.insert(client_uuid);
             UNIQUE_IDS.inc();
         }
     }
