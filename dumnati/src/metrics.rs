@@ -1,24 +1,18 @@
 //! Metrics endpoint.
 
-use crate::AppState;
-use actix_web::{HttpRequest, HttpResponse};
-use futures::future;
-use futures::prelude::*;
-use prometheus;
+use actix_web::HttpResponse;
 
 /// Serve metrics requests (Prometheus textual format).
-pub(crate) fn serve_metrics(
-    _req: HttpRequest<AppState>,
-) -> Box<dyn Future<Item = HttpResponse, Error = failure::Error>> {
+pub(crate) async fn serve_metrics() -> Result<HttpResponse, failure::Error> {
     use prometheus::Encoder;
 
-    let resp = future::ok(prometheus::default_registry().gather())
-        .and_then(|metrics| {
-            let tenc = prometheus::TextEncoder::new();
-            let mut buf = vec![];
-            tenc.encode(&metrics, &mut buf).and(Ok(buf))
-        })
-        .from_err()
-        .map(|content| HttpResponse::Ok().body(content));
-    Box::new(resp)
+    let content = {
+        let metrics = prometheus::default_registry().gather();
+        let txt_enc = prometheus::TextEncoder::new();
+        let mut buf = vec![];
+        txt_enc.encode(&metrics, &mut buf)?;
+        buf
+    };
+
+    Ok(HttpResponse::Ok().body(content))
 }
