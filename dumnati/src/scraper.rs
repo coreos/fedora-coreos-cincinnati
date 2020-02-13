@@ -5,6 +5,9 @@ use reqwest::Method;
 use std::num::NonZeroU64;
 use std::time::Duration;
 
+/// Default timeout for HTTP requests (30 minutes).
+const DEFAULT_HTTP_REQ_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+
 /// Release scraper.
 #[derive(Clone, Debug)]
 pub struct Scraper {
@@ -25,9 +28,13 @@ impl Scraper {
         let vars = maplit::hashmap! { "stream".to_string() => stream.clone() };
         let releases_json = envsubst::substitute(metadata::RELEASES_JSON, &vars)?;
         let stream_json = envsubst::substitute(metadata::STREAM_JSON, &vars)?;
+        let hclient = reqwest::ClientBuilder::new()
+            .timeout(DEFAULT_HTTP_REQ_TIMEOUT)
+            .build()?;
+
         let scraper = Self {
             graph: graph::Graph::default(),
-            hclient: reqwest::ClientBuilder::new().build()?,
+            hclient,
             pause_secs: NonZeroU64::new(30).expect("non-zero pause"),
             stream,
             release_index_url: reqwest::Url::parse(&releases_json)?,
