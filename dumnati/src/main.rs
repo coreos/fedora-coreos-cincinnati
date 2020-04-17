@@ -68,7 +68,7 @@ fn main() -> Fallible<()> {
     let sys = actix::System::new("dumnati");
 
     // TODO(lucab): figure out all configuration params.
-    let streams_cfg = maplit::btreeset!["testing", "stable"];
+    let streams_cfg = maplit::btreeset!["next", "stable", "testing"];
     let mut scrapers = HashMap::with_capacity(streams_cfg.len());
     for stream in streams_cfg {
         let addr = scraper::Scraper::new(stream)?.start();
