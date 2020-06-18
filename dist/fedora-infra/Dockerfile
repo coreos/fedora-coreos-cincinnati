@@ -1,4 +1,4 @@
-FROM fedora:31
+FROM fedora:32
 
 # build: system utilities and libraries
 RUN dnf -y install g++ openssl-devel
