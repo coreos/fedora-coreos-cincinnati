@@ -12,7 +12,7 @@ mod scraper;
 use actix::prelude::*;
 use actix_web::{web, App, HttpResponse};
 use failure::{Error, Fallible};
-use prometheus::{Histogram, IntCounter, IntCounterVec, IntGaugeVec};
+use prometheus::{Histogram, IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
@@ -36,7 +36,6 @@ lazy_static::lazy_static! {
         prometheus::linear_buckets(0.0, 0.1, 11).unwrap()
     )
     .unwrap();
-
     static ref GRAPH_FINAL_EDGES: IntGaugeVec = register_int_gauge_vec!(
         "dumnati_gb_scraper_graph_final_edges",
         "Number of edges in the cached graph, after processing",
@@ -57,6 +56,13 @@ lazy_static::lazy_static! {
        "Total number of upstream scrapes",
         &["stream"]
     ).unwrap();
+    // NOTE(lucab): alternatively this could come from the runtime library, see
+    // https://prometheus.io/docs/instrumenting/writing_clientlibs/#process-metrics
+    static ref PROCESS_START_TIME: IntGauge = register_int_gauge!(opts!(
+        "process_start_time_seconds",
+        "Start time of the process since unix epoch in seconds."
+    )).unwrap();
+
 }
 
 fn main() -> Fallible<()> {
@@ -80,6 +86,9 @@ fn main() -> Fallible<()> {
         scrapers,
         population: Arc::clone(&node_population),
     };
+
+    let start_timestamp = chrono::Utc::now();
+    PROCESS_START_TIME.set(start_timestamp.timestamp());
 
     // Graph-builder service.
     let gb_service = service_state.clone();
