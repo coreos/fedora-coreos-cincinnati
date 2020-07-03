@@ -10,6 +10,7 @@ mod policy;
 mod scraper;
 
 use actix::prelude::*;
+use actix_cors::CorsFactory;
 use actix_web::{web, App, HttpResponse};
 use failure::{Error, Fallible};
 use prometheus::{Histogram, IntCounter, IntCounterVec, IntGauge, IntGaugeVec};
@@ -74,6 +75,8 @@ fn main() -> Fallible<()> {
     let sys = actix::System::new("dumnati");
 
     // TODO(lucab): figure out all configuration params.
+    let gb_allowed_origins = vec!["https://builds.coreos.fedoraproject.org"];
+    let pe_allowed_origins = vec!["https://builds.coreos.fedoraproject.org"];
     let streams_cfg = maplit::btreeset!["next", "stable", "testing"];
     let mut scrapers = HashMap::with_capacity(streams_cfg.len());
     for stream in streams_cfg {
@@ -94,6 +97,7 @@ fn main() -> Fallible<()> {
     let gb_service = service_state.clone();
     actix_web::HttpServer::new(move || {
         App::new()
+            .wrap(build_cors_middleware(&gb_allowed_origins))
             .data(gb_service.clone())
             .route("/v1/graph", web::get().to(gb_serve_graph))
     })
@@ -114,6 +118,7 @@ fn main() -> Fallible<()> {
     let pe_service = service_state.clone();
     actix_web::HttpServer::new(move || {
         App::new()
+            .wrap(build_cors_middleware(&pe_allowed_origins))
             .data(pe_service.clone())
             .route("/v1/graph", web::get().to(pe_serve_graph))
     })
@@ -264,6 +269,15 @@ pub(crate) fn pe_record_metrics(data: &AppState, query: &GraphQuery) {
             UNIQUE_IDS.inc();
         }
     }
+}
+
+/// Provide a CORS middleware allowing given origins.
+pub(crate) fn build_cors_middleware(allowed_origins: &[&str]) -> CorsFactory {
+    let mut builder = actix_cors::Cors::new();
+    for origin in allowed_origins {
+        builder = builder.allowed_origin(origin);
+    }
+    builder.finish()
 }
 
 #[derive(Debug, StructOpt)]
