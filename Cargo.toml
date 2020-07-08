@@ -1,7 +1,8 @@
 [workspace]
 
 members = [
+	"commons",
     "dumnati",
-#    "graph-builder",
-#    "policy-engine",
+   "fcos-graph-builder",
+   "fcos-policy-engine",
 ]
