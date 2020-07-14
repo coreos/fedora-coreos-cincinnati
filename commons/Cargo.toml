@@ -1,0 +1,15 @@
+[package]
+name = "commons"
+version = "0.1.0"
+authors = ["Allen Bai <abai@redhat.com>"]
+edition = "2018"
+publish = false
+
+[dependencies]
+actix-web = "^2.0.0"
+chrono = "^0.4.7"
+failure = "^0.1.1"
+maplit = "^1.0"
+prometheus = "^0.9"
+serde = "^1.0.70"
+serde_derive = "^1.0.70"
