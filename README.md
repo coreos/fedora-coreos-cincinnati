@@ -9,7 +9,9 @@ This service provides an implementation of the [Cincinnati protocol][cincinnati]
 
 This workspace can be built with `cargo build` and contains the following binaries:
 
- * `dumnati`: initial development stub
+ * `fcos-graph-builder`: a service which builds and caches the raw update graph
+ * `fcos-policy-engine`: a web service which handles requests from agents
+ * `dumnati`: initial development stub (legacy)
 
 [cincinnati]: https://github.com/openshift/cincinnati
 [zincati]: https://github.com/coreos/zincati
