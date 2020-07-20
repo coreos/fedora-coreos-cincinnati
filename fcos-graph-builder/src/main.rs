@@ -54,6 +54,7 @@ fn main() -> Fallible<()> {
     let sys = actix::System::new("fcos_cincinnati_gb");
 
     // TODO(lucab): figure out all configuration params.
+    let allowed_origins = vec!["https://builds.coreos.fedoraproject.org"];
     let streams_cfg = maplit::btreeset!["next", "stable", "testing"];
     let mut scrapers = HashMap::with_capacity(streams_cfg.len());
     for stream in streams_cfg {
@@ -70,6 +71,7 @@ fn main() -> Fallible<()> {
     let gb_service = service_state.clone();
     actix_web::HttpServer::new(move || {
         App::new()
+            .wrap(commons::web::build_cors_middleware(&allowed_origins))
             .data(gb_service.clone())
             .route("/v1/graph", web::get().to(gb_serve_graph))
     })
