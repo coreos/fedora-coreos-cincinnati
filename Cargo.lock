@@ -499,6 +499,7 @@ dependencies = [
 name = "commons"
 version = "0.1.0"
 dependencies = [
+ "actix-cors 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "actix-web 2.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.4.12 (registry+https://github.com/rust-lang/crates.io-index)",
  "failure 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",

@@ -6,6 +6,7 @@ edition = "2018"
 publish = false
 
 [dependencies]
+actix-cors = "^0.2"
 actix-web = "^2.0.0"
 chrono = "^0.4.7"
 failure = "^0.1.1"

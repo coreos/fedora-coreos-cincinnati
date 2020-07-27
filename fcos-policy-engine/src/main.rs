@@ -46,6 +46,7 @@ fn main() -> Fallible<()> {
 
     let sys = actix::System::new("fcos_cincinnati_pe");
 
+    let allowed_origins = vec!["https://builds.coreos.fedoraproject.org"];
     let node_population = Arc::new(cbloom::Filter::new(10 * 1024 * 1024, 1_000_000));
     let service_state = AppState {
         population: Arc::clone(&node_population),
@@ -58,6 +59,7 @@ fn main() -> Fallible<()> {
     let pe_service = service_state.clone();
     actix_web::HttpServer::new(move || {
         App::new()
+            .wrap(commons::web::build_cors_middleware(&allowed_origins))
             .data(pe_service.clone())
             .route("/v1/graph", web::get().to(pe_serve_graph))
     })
