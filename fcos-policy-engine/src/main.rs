@@ -3,11 +3,13 @@ extern crate log;
 #[macro_use]
 extern crate prometheus;
 
+mod utils;
+
 use actix_web::{web, App, HttpResponse};
-use commons::{graph, metrics, policy};
+use commons::{metrics, policy};
 use failure::{Error, Fallible};
 use prometheus::{Histogram, IntCounter, IntGauge};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
 use structopt::StructOpt;
@@ -85,7 +87,7 @@ pub(crate) struct AppState {
     population: Arc<cbloom::Filter>,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct GraphQuery {
     basearch: Option<String>,
     stream: Option<String>,
@@ -110,11 +112,9 @@ pub(crate) async fn pe_serve_graph(
     let wariness = compute_wariness(&query);
     ROLLOUT_WARINESS.observe(wariness);
 
-    // TODO (zonggen): remove hard-coded empty graph and use the graph fetched from fcos-graph-builder
-    let cached_graph = graph::Graph::default();
+    let cached_graph = utils::fetch_graph_from_gb(stream.clone(), basearch.clone()).await?;
 
-    let arch_graph = policy::pick_basearch(cached_graph, basearch)?;
-    let throttled_graph = policy::throttle_rollouts(arch_graph, wariness);
+    let throttled_graph = policy::throttle_rollouts(cached_graph, wariness);
     let final_graph = policy::filter_deadends(throttled_graph);
 
     let json =
