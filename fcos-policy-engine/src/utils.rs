@@ -6,8 +6,8 @@ use std::time::Duration;
 
 /// Default timeout for HTTP requests (30 minutes).
 const DEFAULT_HTTP_REQ_TIMEOUT: Duration = Duration::from_secs(30 * 60);
-/// Default address of fcos-graph-builder, which is the same as fcos-policy-builer
-const DEFAULT_GB_ADDR: &str = "http://127.0.0.1:5050/v1/graph";
+/// Default address of fcos-graph-builder, which is running in the same pod.
+const DEFAULT_GB_ADDR: &str = "http://127.0.0.1:8080/v1/graph";
 
 /// Return a request builder with base URL and parameters set.
 fn new_request(method: reqwest::Method, url: reqwest::Url) -> Fallible<reqwest::RequestBuilder> {

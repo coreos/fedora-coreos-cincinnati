@@ -75,7 +75,7 @@ fn main() -> Fallible<()> {
             .data(gb_service.clone())
             .route("/v1/graph", web::get().to(gb_serve_graph))
     })
-    .bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 5050))?
+    .bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 8080))?
     .run();
 
     // Graph-builder status service.
@@ -85,7 +85,7 @@ fn main() -> Fallible<()> {
             .data(gb_status.clone())
             .route("/metrics", web::get().to(metrics::serve_metrics))
     })
-    .bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 6060))?
+    .bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 9080))?
     .run();
 
     sys.run()?;
