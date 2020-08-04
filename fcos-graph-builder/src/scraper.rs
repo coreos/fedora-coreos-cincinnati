@@ -29,6 +29,7 @@ impl Scraper {
         let releases_json = envsubst::substitute(metadata::RELEASES_JSON, &vars)?;
         let stream_json = envsubst::substitute(metadata::STREAM_JSON, &vars)?;
         let hclient = reqwest::ClientBuilder::new()
+            .pool_idle_timeout(Some(Duration::from_secs(10)))
             .timeout(DEFAULT_HTTP_REQ_TIMEOUT)
             .build()?;
 
