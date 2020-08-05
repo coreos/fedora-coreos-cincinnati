@@ -8,12 +8,17 @@ mod scraper;
 use actix::prelude::*;
 use actix_web::{web, App, HttpResponse};
 use commons::{metrics, policy};
-use failure::Fallible;
+use failure::{Fallible, ResultExt};
+use log::LevelFilter;
 use prometheus::{IntCounterVec, IntGauge, IntGaugeVec};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr};
+use structopt::clap::{crate_name, crate_version};
 use structopt::StructOpt;
+
+/// Top-level log target for this application.
+static APP_LOG_TARGET: &str = "fcos_graph_builder";
 
 lazy_static::lazy_static! {
     static ref GRAPH_FINAL_EDGES: IntGaugeVec = register_int_gauge_vec!(
@@ -46,10 +51,18 @@ lazy_static::lazy_static! {
 }
 
 fn main() -> Fallible<()> {
-    env_logger::Builder::from_default_env().try_init()?;
+    // Parse command-line options.
+    let cli_opts = CliOptions::from_args();
 
-    let opts = CliOptions::from_args();
-    trace!("started with CLI options: {:#?}", opts);
+    // Setup logging.
+    env_logger::Builder::from_default_env()
+        .format_timestamp(None)
+        .format_module_path(false)
+        .filter(Some(APP_LOG_TARGET), cli_opts.loglevel())
+        .try_init()
+        .context("failed to initialize logging")?;
+
+    debug!("command-line options:\n{:#?}", cli_opts);
 
     let sys = actix::System::new("fcos_cincinnati_gb");
 
@@ -66,6 +79,7 @@ fn main() -> Fallible<()> {
 
     let start_timestamp = chrono::Utc::now();
     PROCESS_START_TIME.set(start_timestamp.timestamp());
+    info!("starting server ({} {})", crate_name!(), crate_version!());
 
     // Graph-builder service.
     let gb_service = service_state.clone();
@@ -132,9 +146,26 @@ pub(crate) async fn gb_serve_graph(
     Ok(resp)
 }
 
+/// CLI configuration options.
 #[derive(Debug, StructOpt)]
 pub(crate) struct CliOptions {
+    /// Verbosity level (higher is more verbose).
+    #[structopt(short = "v", parse(from_occurrences))]
+    verbosity: u8,
+
     /// Path to configuration file.
     #[structopt(short = "c")]
     pub config_path: Option<String>,
+}
+
+impl CliOptions {
+    /// Returns the log-level set via command-line flags.
+    pub(crate) fn loglevel(&self) -> LevelFilter {
+        match self.verbosity {
+            0 => LevelFilter::Warn,
+            1 => LevelFilter::Info,
+            2 => LevelFilter::Debug,
+            _ => LevelFilter::Trace,
+        }
+    }
 }
