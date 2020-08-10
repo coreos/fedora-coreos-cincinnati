@@ -50,7 +50,7 @@ fn main() -> Fallible<()> {
 
     // Setup logging.
     env_logger::Builder::from_default_env()
-        .format_timestamp(None)
+        .format_timestamp_secs()
         .format_module_path(false)
         .filter(Some(APP_LOG_TARGET), cli_opts.loglevel())
         .try_init()
