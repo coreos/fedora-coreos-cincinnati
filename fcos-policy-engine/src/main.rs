@@ -78,7 +78,7 @@ fn main() -> Fallible<()> {
             .data(pe_service.clone())
             .route("/v1/graph", web::get().to(pe_serve_graph))
     })
-    .bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 5051))?
+    .bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 8081))?
     .run();
 
     // Policy-engine status service.
@@ -88,7 +88,7 @@ fn main() -> Fallible<()> {
             .data(pe_status.clone())
             .route("/metrics", web::get().to(metrics::serve_metrics))
     })
-    .bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 6061))?
+    .bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 9081))?
     .run();
 
     sys.run()?;
