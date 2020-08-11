@@ -3,16 +3,18 @@ extern crate log;
 #[macro_use]
 extern crate prometheus;
 
+mod cli;
+mod config;
+mod settings;
 mod utils;
 
 use actix_web::{web, App, HttpResponse};
 use commons::{metrics, policy};
 use failure::{Error, Fallible, ResultExt};
-use log::LevelFilter;
 use prometheus::{Histogram, IntCounter, IntGauge};
 use serde::{Deserialize, Serialize};
-use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
+use std::time::Duration;
 use structopt::clap::{crate_name, crate_version};
 use structopt::StructOpt;
 
@@ -42,11 +44,11 @@ lazy_static::lazy_static! {
         "process_start_time_seconds",
         "Start time of the process since unix epoch in seconds."
     )).unwrap();
-
 }
 
 fn main() -> Fallible<()> {
-    let cli_opts = CliOptions::from_args();
+    // Parse command-line options.
+    let cli_opts = cli::CliOptions::from_args();
 
     // Setup logging.
     env_logger::Builder::from_default_env()
@@ -56,39 +58,55 @@ fn main() -> Fallible<()> {
         .try_init()
         .context("failed to initialize logging")?;
 
-    debug!("command-line options:\n{:#?}", cli_opts);
+    // Parse config file and validate settings.
+    let (service_settings, status_settings) = {
+        debug!("config file location: {}", cli_opts.config_path.display());
+        let cfg = config::FileConfig::parse_file(cli_opts.config_path)?;
+        let settings = settings::PolicyEngineSettings::validate_config(cfg)?;
+        (settings.service, settings.status)
+    };
 
     let sys = actix::System::new("fcos_cincinnati_pe");
 
-    let allowed_origins = vec!["https://builds.coreos.fedoraproject.org"];
-    let node_population = Arc::new(cbloom::Filter::new(10 * 1024 * 1024, 1_000_000));
+    let node_population = Arc::new(cbloom::Filter::new(
+        service_settings.bloom_size,
+        service_settings.bloom_max_population,
+    ));
     let service_state = AppState {
         population: Arc::clone(&node_population),
+        upstream_endpoint: service_settings.upstream_base.clone(),
+        upstream_req_timeout: service_settings.upstream_req_timeout,
     };
+    debug!(
+        "upstream graph endpoint: {}",
+        service_settings.upstream_base
+    );
 
     let start_timestamp = chrono::Utc::now();
     PROCESS_START_TIME.set(start_timestamp.timestamp());
     info!("starting server ({} {})", crate_name!(), crate_version!());
 
-    // Policy-engine service.
-    let pe_service = service_state.clone();
+    // Policy-engine main service.
+    let service_socket = service_settings.socket_addr();
+    debug!("main service address: {}", service_socket);
     actix_web::HttpServer::new(move || {
         App::new()
-            .wrap(commons::web::build_cors_middleware(&allowed_origins))
-            .data(pe_service.clone())
+            .wrap(commons::web::build_cors_middleware(
+                &service_settings.allowed_origins,
+            ))
+            .data(service_state.clone())
             .route("/v1/graph", web::get().to(pe_serve_graph))
     })
-    .bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 8081))?
+    .bind(service_socket)?
     .run();
 
     // Policy-engine status service.
-    let pe_status = service_state;
+    let status_socket = status_settings.socket_addr();
+    debug!("status service address: {}", status_socket);
     actix_web::HttpServer::new(move || {
-        App::new()
-            .data(pe_status.clone())
-            .route("/metrics", web::get().to(metrics::serve_metrics))
+        App::new().route("/metrics", web::get().to(metrics::serve_metrics))
     })
-    .bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 9081))?
+    .bind(status_socket)?
     .run();
 
     sys.run()?;
@@ -98,6 +116,8 @@ fn main() -> Fallible<()> {
 #[derive(Clone, Debug)]
 pub(crate) struct AppState {
     population: Arc<cbloom::Filter>,
+    upstream_endpoint: reqwest::Url,
+    upstream_req_timeout: Duration,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -125,7 +145,13 @@ pub(crate) async fn pe_serve_graph(
     let wariness = compute_wariness(&query);
     ROLLOUT_WARINESS.observe(wariness);
 
-    let cached_graph = utils::fetch_graph_from_gb(stream.clone(), basearch.clone()).await?;
+    let cached_graph = utils::fetch_graph_from_gb(
+        data.upstream_endpoint.clone(),
+        stream.clone(),
+        basearch.clone(),
+        data.upstream_req_timeout,
+    )
+    .await?;
 
     let throttled_graph = policy::throttle_rollouts(cached_graph, wariness);
     let final_graph = policy::filter_deadends(throttled_graph);
@@ -188,30 +214,6 @@ pub(crate) fn pe_record_metrics(data: &AppState, query: &GraphQuery) {
         if !data.population.maybe_contains(client_uuid) {
             data.population.insert(client_uuid);
             UNIQUE_IDS.inc();
-        }
-    }
-}
-
-/// CLI configuration options.
-#[derive(Debug, StructOpt)]
-pub(crate) struct CliOptions {
-    /// Verbosity level (higher is more verbose).
-    #[structopt(short = "v", parse(from_occurrences))]
-    verbosity: u8,
-
-    /// Path to configuration file.
-    #[structopt(short = "c")]
-    pub config_path: Option<String>,
-}
-
-impl CliOptions {
-    /// Returns the log-level set via command-line flags.
-    pub(crate) fn loglevel(&self) -> LevelFilter {
-        match self.verbosity {
-            0 => LevelFilter::Warn,
-            1 => LevelFilter::Info,
-            2 => LevelFilter::Debug,
-            _ => LevelFilter::Trace,
         }
     }
 }

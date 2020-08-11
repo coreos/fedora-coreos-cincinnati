@@ -1,0 +1,4 @@
+# This is a sample configuration file for policy-engine.
+#
+# For the live configuration on fedora-infra, see
+# https://pagure.io/fedora-infra/ansible/blob/master/f/roles/openshift-apps/coreos-cincinnati/files/config-stub.yml
