@@ -3,17 +3,18 @@ extern crate log;
 #[macro_use]
 extern crate prometheus;
 
+mod cli;
+mod config;
 mod scraper;
+mod settings;
 
 use actix::prelude::*;
 use actix_web::{web, App, HttpResponse};
 use commons::{metrics, policy};
 use failure::{Fallible, ResultExt};
-use log::LevelFilter;
 use prometheus::{IntCounterVec, IntGauge, IntGaugeVec};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::net::{IpAddr, Ipv4Addr};
 use structopt::clap::{crate_name, crate_version};
 use structopt::StructOpt;
 
@@ -47,12 +48,11 @@ lazy_static::lazy_static! {
         "process_start_time_seconds",
         "Start time of the process since unix epoch in seconds."
     )).unwrap();
-
 }
 
 fn main() -> Fallible<()> {
     // Parse command-line options.
-    let cli_opts = CliOptions::from_args();
+    let cli_opts = cli::CliOptions::from_args();
 
     // Setup logging.
     env_logger::Builder::from_default_env()
@@ -62,15 +62,18 @@ fn main() -> Fallible<()> {
         .try_init()
         .context("failed to initialize logging")?;
 
-    debug!("command-line options:\n{:#?}", cli_opts);
-
     let sys = actix::System::new("fcos_cincinnati_gb");
 
-    // TODO(lucab): figure out all configuration params.
-    let allowed_origins = vec!["https://builds.coreos.fedoraproject.org"];
-    let streams_cfg = maplit::btreeset!["next", "stable", "testing"];
-    let mut scrapers = HashMap::with_capacity(streams_cfg.len());
-    for stream in streams_cfg {
+    // Parse config file and validate settings.
+    let (service_settings, status_settings) = {
+        debug!("config file location: {}", cli_opts.config_path.display());
+        let cfg = config::FileConfig::parse_file(cli_opts.config_path)?;
+        let settings = settings::GraphBuilderSettings::validate_config(cfg)?;
+        (settings.service, settings.status)
+    };
+
+    let mut scrapers = HashMap::with_capacity(service_settings.streams.len());
+    for stream in &service_settings.streams {
         let addr = scraper::Scraper::new(stream)?.start();
         scrapers.insert(stream.to_string(), addr);
     }
@@ -81,25 +84,31 @@ fn main() -> Fallible<()> {
     PROCESS_START_TIME.set(start_timestamp.timestamp());
     info!("starting server ({} {})", crate_name!(), crate_version!());
 
-    // Graph-builder service.
+    // Graph-builder main service.
+    let service_socket = service_settings.socket_addr();
+    debug!("main service address: {}", service_socket);
     let gb_service = service_state.clone();
     actix_web::HttpServer::new(move || {
         App::new()
-            .wrap(commons::web::build_cors_middleware(&allowed_origins))
+            .wrap(commons::web::build_cors_middleware(
+                &service_settings.allowed_origins,
+            ))
             .data(gb_service.clone())
             .route("/v1/graph", web::get().to(gb_serve_graph))
     })
-    .bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 8080))?
+    .bind(service_socket)?
     .run();
 
     // Graph-builder status service.
+    let status_socket = status_settings.socket_addr();
+    debug!("status service address: {}", status_socket);
     let gb_status = service_state;
     actix_web::HttpServer::new(move || {
         App::new()
             .data(gb_status.clone())
             .route("/metrics", web::get().to(metrics::serve_metrics))
     })
-    .bind((IpAddr::from(Ipv4Addr::UNSPECIFIED), 9080))?
+    .bind(status_socket)?
     .run();
 
     sys.run()?;
@@ -144,28 +153,4 @@ pub(crate) async fn gb_serve_graph(
         .content_type("application/json")
         .body(json);
     Ok(resp)
-}
-
-/// CLI configuration options.
-#[derive(Debug, StructOpt)]
-pub(crate) struct CliOptions {
-    /// Verbosity level (higher is more verbose).
-    #[structopt(short = "v", parse(from_occurrences))]
-    verbosity: u8,
-
-    /// Path to configuration file.
-    #[structopt(short = "c")]
-    pub config_path: Option<String>,
-}
-
-impl CliOptions {
-    /// Returns the log-level set via command-line flags.
-    pub(crate) fn loglevel(&self) -> LevelFilter {
-        match self.verbosity {
-            0 => LevelFilter::Warn,
-            1 => LevelFilter::Info,
-            2 => LevelFilter::Debug,
-            _ => LevelFilter::Trace,
-        }
-    }
 }
