@@ -13,12 +13,10 @@ WORKDIR /src
 # build: release binary
 RUN cargo build --release && \
   mv /src/target/release/fcos-graph-builder /usr/local/bin/fcos-graph-builder && \
-  mv /src/target/release/fcos-policy-engine /usr/local/bin/fcos-policy-engine && \
-  mv /src/target/release/dumnati /usr/local/bin/dumnati
+  mv /src/target/release/fcos-policy-engine /usr/local/bin/fcos-policy-engine
 
 # build: cleanup
 RUN cargo clean
 
 # run: default config
 WORKDIR /
-CMD [ "/usr/local/bin/dumnati" ]

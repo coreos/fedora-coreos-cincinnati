@@ -11,7 +11,6 @@ This workspace can be built with `cargo build` and contains the following binari
 
  * `fcos-graph-builder`: a service which builds and caches the raw update graph
  * `fcos-policy-engine`: a web service which handles requests from agents
- * `dumnati`: initial development stub (legacy)
 
 [cincinnati]: https://github.com/openshift/cincinnati
 [zincati]: https://github.com/coreos/zincati
