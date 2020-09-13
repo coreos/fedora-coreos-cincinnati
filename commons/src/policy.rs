@@ -30,7 +30,7 @@ pub fn pick_basearch(input: Graph, basearch: String) -> Fallible<Graph> {
     let key = format!("{}.{}", metadata::ARCH_PREFIX, &basearch);
 
     if basearch != "x86_64" {
-        bail!("unexpected basearch '{}", basearch);
+        bail!("unexpected basearch '{}'", basearch);
     }
 
     for mut release in &mut graph.nodes {
