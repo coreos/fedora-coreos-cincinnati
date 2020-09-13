@@ -144,7 +144,13 @@ pub(crate) async fn gb_serve_graph(
 
     let cached_graph = addr.send(scraper::GetCachedGraph { stream }).await??;
 
-    let arch_graph = policy::pick_basearch(cached_graph, basearch)?;
+    let arch_graph = match policy::pick_basearch(cached_graph, basearch) {
+        Err(e) => {
+            log::error!("error picking basearch: {}", e);
+            return Ok(HttpResponse::BadRequest().finish());
+        }
+        Ok(graph) => graph,
+    };
     let final_graph = policy::filter_deadends(arch_graph);
 
     let json =
