@@ -92,7 +92,7 @@ fn main() -> Fallible<()> {
     actix_web::HttpServer::new(move || {
         App::new()
             .wrap(commons::web::build_cors_middleware(
-                &service_settings.allowed_origins,
+                &service_settings.origin_allowlist,
             ))
             .data(service_state.clone())
             .route("/v1/graph", web::get().to(pe_serve_graph))

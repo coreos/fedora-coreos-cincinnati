@@ -21,7 +21,7 @@ impl PolicyEngineSettings {
 /// Runtime settings for the main service (graph endpoint) server.
 #[derive(Clone, Debug)]
 pub struct ServiceSettings {
-    pub(crate) allowed_origins: Vec<String>,
+    pub(crate) origin_allowlist: Option<Vec<String>>,
     pub(crate) bloom_max_population: usize,
     pub(crate) bloom_size: usize,
     pub(crate) ip_addr: IpAddr,
@@ -35,8 +35,6 @@ impl ServiceSettings {
     const DEFAULT_BLOOM_MAX_MEMBERS: usize = 1_000_000;
     /// Default size of the Bloom filter for unique IDs tracking.
     const DEFAULT_BLOOM_SIZE: usize = 10 * 1024 * 1024; // 10 MiB
-    /// Default allowed CORS origin.
-    const DEFAULT_CORS_URL: &'static str = "https://builds.coreos.fedoraproject.org";
     /// Default IP address for policy-engine main service.
     const DEFAULT_PE_SERVICE_ADDR: Ipv4Addr = Ipv4Addr::UNSPECIFIED;
     /// Default TCP port for policy-engine main service.
@@ -55,7 +53,7 @@ impl ServiceSettings {
 impl Default for ServiceSettings {
     fn default() -> Self {
         Self {
-            allowed_origins: vec![Self::DEFAULT_CORS_URL.to_string()],
+            origin_allowlist: None,
             bloom_max_population: Self::DEFAULT_BLOOM_MAX_MEMBERS,
             bloom_size: Self::DEFAULT_BLOOM_SIZE,
             ip_addr: Self::DEFAULT_PE_SERVICE_ADDR.into(),
