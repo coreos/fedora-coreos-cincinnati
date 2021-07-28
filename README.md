@@ -1,7 +1,7 @@
 # Fedora CoreOS updates backend
 
 ![Checks status](https://img.shields.io/github/checks-status/coreos/fedora-coreos-cincinnati/main)
-![minimum rust 1.39](https://img.shields.io/badge/rust-1.39%2B-orange.svg)
+![minimum rust 1.49](https://img.shields.io/badge/rust-1.49%2B-orange.svg)
 
 This repository contains the logic for Fedora CoreOS auto-updates backend.
 
