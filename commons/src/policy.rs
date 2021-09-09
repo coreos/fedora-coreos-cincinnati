@@ -1,11 +1,9 @@
 use crate::graph::Graph;
 use crate::metadata;
-use failure::{bail, Fallible};
+use std::collections::HashSet;
 
 /// Prune outgoing edges from "deadend" nodes.
 pub fn filter_deadends(input: Graph) -> Graph {
-    use std::collections::HashSet;
-
     let mut graph = input;
     let mut deadends = HashSet::new();
 
@@ -24,34 +22,8 @@ pub fn filter_deadends(input: Graph) -> Graph {
     graph
 }
 
-/// Pick relevant payload for requested basearch.
-pub fn pick_basearch(input: Graph, basearch: String) -> Fallible<Graph> {
-    let mut graph = input;
-    let key = format!("{}.{}", metadata::ARCH_PREFIX, &basearch);
-
-    if basearch != "x86_64" {
-        bail!("unexpected basearch '{}'", basearch);
-    }
-
-    for mut release in &mut graph.nodes {
-        if let Some(payload) = release.metadata.remove(&key) {
-            release.payload = payload;
-            release
-                .metadata
-                .insert(metadata::SCHEME.to_string(), "checksum".to_string());
-        }
-        release
-            .metadata
-            .retain(|k, _| !k.starts_with(metadata::ARCH_PREFIX));
-    }
-
-    Ok(graph)
-}
-
 /// Conditionally prune incoming edges towards throttled rollouts.
 pub fn throttle_rollouts(input: Graph, client_wariness: f64) -> Graph {
-    use std::collections::HashSet;
-
     let mut graph = input;
     let mut hidden = HashSet::new();
     let now = chrono::Utc::now().timestamp();

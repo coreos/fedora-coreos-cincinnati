@@ -13,19 +13,18 @@ const DEFAULT_HTTP_REQ_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 pub struct Scraper {
     graph: graph::Graph,
     hclient: reqwest::Client,
-    stream: String,
     pause_secs: NonZeroU64,
-    stream_metadata_url: reqwest::Url,
     release_index_url: reqwest::Url,
+    scope: graph::GraphScope,
+    stream_metadata_url: reqwest::Url,
 }
 
 impl Scraper {
-    pub fn new<S>(stream: S) -> Fallible<Self>
-    where
-        S: Into<String>,
-    {
-        let stream = stream.into();
-        let vars = maplit::hashmap! { "stream".to_string() => stream.clone() };
+    pub(crate) fn new(scope: graph::GraphScope) -> Fallible<Self> {
+        let vars = maplit::hashmap! {
+            "basearch".to_string() => scope.basearch.clone(),
+            "stream".to_string() => scope.stream.clone(),
+        };
         let releases_json = envsubst::substitute(metadata::RELEASES_JSON, &vars)?;
         let stream_json = envsubst::substitute(metadata::STREAM_JSON, &vars)?;
         let hclient = reqwest::ClientBuilder::new()
@@ -37,7 +36,7 @@ impl Scraper {
             graph: graph::Graph::default(),
             hclient,
             pause_secs: NonZeroU64::new(30).expect("non-zero pause"),
-            stream,
+            scope,
             release_index_url: reqwest::Url::parse(&releases_json)?,
             stream_metadata_url: reqwest::Url::parse(&stream_json)?,
         };
@@ -84,13 +83,14 @@ impl Scraper {
     fn assemble_graph(&self) -> impl Future<Output = Result<graph::Graph, Error>> {
         let stream_releases = self.fetch_releases();
         let stream_updates = self.fetch_updates();
+        let scope = self.scope.clone();
 
         // NOTE(lucab): this inner scope is in order to get a 'static lifetime on
         //  the future for actix compatibility.
         async {
             let (graph, updates) =
                 futures::future::try_join(stream_releases, stream_updates).await?;
-            graph::Graph::from_metadata(graph, updates)
+            graph::Graph::from_metadata(graph, updates, scope)
         }
     }
 
@@ -100,13 +100,13 @@ impl Scraper {
 
         let refresh_timestamp = chrono::Utc::now();
         crate::LAST_REFRESH
-            .with_label_values(&[&self.stream])
+            .with_label_values(&[&self.scope.basearch, &self.scope.stream])
             .set(refresh_timestamp.timestamp());
         crate::GRAPH_FINAL_EDGES
-            .with_label_values(&[&self.stream])
+            .with_label_values(&[&self.scope.basearch, &self.scope.stream])
             .set(self.graph.edges.len() as i64);
         crate::GRAPH_FINAL_RELEASES
-            .with_label_values(&[&self.stream])
+            .with_label_values(&[&self.scope.basearch, &self.scope.stream])
             .set(self.graph.nodes.len() as i64);
     }
 }
@@ -131,7 +131,7 @@ impl Handler<RefreshTick> for Scraper {
 
     fn handle(&mut self, _msg: RefreshTick, _ctx: &mut Self::Context) -> Self::Result {
         crate::UPSTREAM_SCRAPES
-            .with_label_values(&[&self.stream])
+            .with_label_values(&[&self.scope.basearch, &self.scope.stream])
             .inc();
 
         let latest_graph = self.assemble_graph();
@@ -153,15 +153,7 @@ impl Handler<RefreshTick> for Scraper {
 }
 
 pub(crate) struct GetCachedGraph {
-    pub(crate) stream: String,
-}
-
-impl Default for GetCachedGraph {
-    fn default() -> Self {
-        Self {
-            stream: "testing".to_string(),
-        }
-    }
+    pub(crate) scope: graph::GraphScope,
 }
 
 impl Message for GetCachedGraph {
@@ -173,10 +165,16 @@ impl Handler<GetCachedGraph> for Scraper {
 
     fn handle(&mut self, msg: GetCachedGraph, _ctx: &mut Self::Context) -> Self::Result {
         use failure::format_err;
-        if msg.stream != self.stream {
+        if msg.scope.basearch != self.scope.basearch {
+            return Box::new(actix::fut::err(format_err!(
+                "unexpected basearch '{}'",
+                msg.scope.basearch
+            )));
+        }
+        if msg.scope.stream != self.scope.stream {
             return Box::new(actix::fut::err(format_err!(
                 "unexpected stream '{}'",
-                msg.stream
+                msg.scope.stream
             )));
         }
         Box::new(actix::fut::ok(self.graph.clone()))

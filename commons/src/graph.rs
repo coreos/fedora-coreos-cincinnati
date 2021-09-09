@@ -32,11 +32,12 @@ impl Graph {
     pub fn from_metadata(
         releases: Vec<metadata::Release>,
         updates: metadata::UpdatesJSON,
+        scope: GraphScope,
     ) -> Fallible<Self> {
         let nodes: Vec<CincinnatiPayload> = releases
             .into_iter()
             .enumerate()
-            .map(|(age_index, entry)| {
+            .filter_map(|(age_index, entry)| {
                 let mut current = CincinnatiPayload {
                     version: entry.version,
                     payload: "".to_string(),
@@ -44,13 +45,21 @@ impl Graph {
                         metadata::AGE_INDEX.to_string() => age_index.to_string(),
                     },
                 };
+                let mut has_basearch = false;
                 for commit in entry.commits {
-                    if commit.architecture.is_empty() || commit.checksum.is_empty() {
+                    if commit.architecture != scope.basearch || commit.checksum.is_empty() {
                         continue;
                     }
-                    let key = format!("{}.{}", metadata::ARCH_PREFIX, commit.architecture);
-                    let value = commit.checksum;
-                    current.metadata.insert(key, value);
+                    has_basearch = true;
+                    current.payload = commit.checksum;
+                    current
+                        .metadata
+                        .insert(metadata::SCHEME.to_string(), "checksum".to_string());
+                }
+
+                // Not a valid release payload for this graph scope, skip it.
+                if !has_basearch {
+                    return None;
                 }
 
                 // Augment with dead-ends metadata.
@@ -62,7 +71,7 @@ impl Graph {
                 // Augment with rollouts metadata.
                 Self::inject_throttling_params(&updates, &mut current);
 
-                current
+                Some(current)
             })
             .collect();
 
@@ -200,4 +209,11 @@ impl Graph {
             }
         }
     }
+}
+
+/// The scope of a cached graph, i.e. the specific stream and basearch that it is valid for.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct GraphScope {
+    pub basearch: String,
+    pub stream: String,
 }
