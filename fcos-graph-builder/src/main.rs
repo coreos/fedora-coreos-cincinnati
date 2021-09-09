@@ -10,7 +10,7 @@ mod settings;
 
 use actix::prelude::*;
 use actix_web::{web, App, HttpResponse};
-use commons::{metrics, policy};
+use commons::{graph, metrics, policy};
 use failure::{Fallible, ResultExt};
 use prometheus::{IntCounterVec, IntGauge, IntGaugeVec};
 use serde::Deserialize;
@@ -25,22 +25,22 @@ lazy_static::lazy_static! {
     static ref GRAPH_FINAL_EDGES: IntGaugeVec = register_int_gauge_vec!(
         "fcos_cincinnati_gb_scraper_graph_final_edges",
         "Number of edges in the cached graph, after processing",
-        &["stream"]
+        &["basearch", "stream"]
     ).unwrap();
     static ref GRAPH_FINAL_RELEASES: IntGaugeVec = register_int_gauge_vec!(
         "fcos_cincinnati_gb_scraper_graph_final_releases",
         "Number of releases in the cached graph, after processing",
-        &["stream"]
+        &["basearch", "stream"]
     ).unwrap();
     static ref LAST_REFRESH: IntGaugeVec = register_int_gauge_vec!(
        "fcos_cincinnati_gb_scraper_graph_last_refresh_timestamp",
         "UTC timestamp of last graph refresh",
-        &["stream"]
+        &["basearch", "stream"]
     ).unwrap();
     static ref UPSTREAM_SCRAPES: IntCounterVec = register_int_counter_vec!(
        "fcos_cincinnati_gb_scraper_upstream_scrapes_total",
        "Total number of upstream scrapes",
-        &["stream"]
+        &["basearch", "stream"]
     ).unwrap();
     // NOTE(lucab): alternatively this could come from the runtime library, see
     // https://prometheus.io/docs/instrumenting/writing_clientlibs/#process-metrics
@@ -74,8 +74,13 @@ fn main() -> Fallible<()> {
 
     let mut scrapers = HashMap::with_capacity(service_settings.streams.len());
     for stream in &service_settings.streams {
-        let addr = scraper::Scraper::new(stream)?.start();
-        scrapers.insert(stream.to_string(), addr);
+        let scope = graph::GraphScope {
+            // TODO(lucab): get this through settings, and add 'aarch64'.
+            basearch: "x86_64".to_string(),
+            stream: stream.clone(),
+        };
+        let addr = scraper::Scraper::new(scope.clone())?.start();
+        scrapers.insert(scope, addr);
     }
 
     let service_state = AppState { scrapers };
@@ -117,7 +122,7 @@ fn main() -> Fallible<()> {
 
 #[derive(Clone, Debug)]
 pub(crate) struct AppState {
-    scrapers: HashMap<String, Addr<scraper::Scraper>>,
+    scrapers: HashMap<graph::GraphScope, Addr<scraper::Scraper>>,
 }
 
 #[derive(Deserialize)]
@@ -137,21 +142,27 @@ pub(crate) async fn gb_serve_graph(
         .unwrap_or_default();
     let stream = query.stream.as_ref().map(String::from).unwrap_or_default();
 
-    let addr = match data.scrapers.get(&stream) {
-        None => return Ok(HttpResponse::NotFound().finish()),
+    let scope = graph::GraphScope { basearch, stream };
+
+    let addr = match data.scrapers.get(&scope) {
+        None => {
+            log::error!(
+                "graph request with invalid scope: basearch='{}', stream='{}'",
+                scope.basearch,
+                scope.stream,
+            );
+            return Ok(HttpResponse::NotFound().finish());
+        }
         Some(addr) => addr,
     };
 
-    let cached_graph = addr.send(scraper::GetCachedGraph { stream }).await??;
+    let cached_graph = addr
+        .send(scraper::GetCachedGraph {
+            scope: scope.clone(),
+        })
+        .await??;
 
-    let arch_graph = match policy::pick_basearch(cached_graph, basearch) {
-        Err(e) => {
-            log::error!("error picking basearch: {}", e);
-            return Ok(HttpResponse::BadRequest().finish());
-        }
-        Ok(graph) => graph,
-    };
-    let final_graph = policy::filter_deadends(arch_graph);
+    let final_graph = policy::filter_deadends(cached_graph);
 
     let json =
         serde_json::to_string_pretty(&final_graph).map_err(|e| failure::format_err!("{}", e))?;
