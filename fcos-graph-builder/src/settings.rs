@@ -34,8 +34,10 @@ impl ServiceSettings {
     /// Default TCP port for graph-builder main service.
     const DEFAULT_GB_SERVICE_PORT: u16 = 8080;
     /// Default scopes (basearch plus stream) to process.
-    const DEFAULT_SCOPES: [(&'static str, &'static str); 3] = [
-        // TODO(lucab): add 'aarch64' streams.
+    const DEFAULT_SCOPES: [(&'static str, &'static str); 6] = [
+        ("aarch64", "next"),
+        ("aarch64", "stable"),
+        ("aarch64", "testing"),
         ("x86_64", "next"),
         ("x86_64", "stable"),
         ("x86_64", "testing"),
