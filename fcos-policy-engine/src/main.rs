@@ -69,27 +69,13 @@ fn main() -> Fallible<()> {
 
     let sys = actix::System::new("fcos_cincinnati_pe");
 
-    // TODO(lucab): get allowed scopes from config file.
-    let allowed_scopes = maplit::hashset! {
-        graph::GraphScope {
-            basearch: "x86_64".to_string(),
-            stream: "stable".to_string(),
-        },
-        graph::GraphScope {
-            basearch: "x86_64".to_string(),
-            stream: "testing".to_string(),
-        },
-        graph::GraphScope {
-            basearch: "x86_64".to_string(),
-            stream: "next".to_string(),
-        },
-    };
     let node_population = Arc::new(cbloom::Filter::new(
         service_settings.bloom_size,
         service_settings.bloom_max_population,
     ));
     let service_state = AppState {
-        scope_filter: Some(allowed_scopes),
+        // TODO(lucab): get allowed scopes from config file.
+        scope_filter: None,
         population: Arc::clone(&node_population),
         upstream_endpoint: service_settings.upstream_base.clone(),
         upstream_req_timeout: service_settings.upstream_req_timeout,
