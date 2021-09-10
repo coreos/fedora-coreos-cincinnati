@@ -10,11 +10,11 @@ mod settings;
 
 use actix::prelude::*;
 use actix_web::{web, App, HttpResponse};
+use commons::web::GraphQuery;
 use commons::{graph, metrics, policy};
 use failure::{Fallible, ResultExt};
 use prometheus::{IntCounterVec, IntGauge, IntGaugeVec};
-use serde::Deserialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use structopt::clap::{crate_name, crate_version};
 use structopt::StructOpt;
 
@@ -83,7 +83,11 @@ fn main() -> Fallible<()> {
         scrapers.insert(scope, addr);
     }
 
-    let service_state = AppState { scrapers };
+    // TODO(lucab): get allowed scopes from config file.
+    let service_state = AppState {
+        scope_filter: None,
+        scrapers,
+    };
 
     let start_timestamp = chrono::Utc::now();
     PROCESS_START_TIME.set(start_timestamp.timestamp());
@@ -122,32 +126,26 @@ fn main() -> Fallible<()> {
 
 #[derive(Clone, Debug)]
 pub(crate) struct AppState {
+    scope_filter: Option<HashSet<graph::GraphScope>>,
     scrapers: HashMap<graph::GraphScope, Addr<scraper::Scraper>>,
-}
-
-#[derive(Deserialize)]
-pub struct GraphQuery {
-    basearch: Option<String>,
-    stream: Option<String>,
 }
 
 pub(crate) async fn gb_serve_graph(
     data: actix_web::web::Data<AppState>,
     query: actix_web::web::Query<GraphQuery>,
 ) -> Result<HttpResponse, failure::Error> {
-    let basearch = query
-        .basearch
-        .as_ref()
-        .map(String::from)
-        .unwrap_or_default();
-    let stream = query.stream.as_ref().map(String::from).unwrap_or_default();
-
-    let scope = graph::GraphScope { basearch, stream };
+    let scope = match query.into_inner().validate_scope(&data.scope_filter) {
+        Err(e) => {
+            log::error!("graph request with invalid scope: {}", e);
+            return Ok(HttpResponse::BadRequest().finish());
+        }
+        Ok(s) => s,
+    };
 
     let addr = match data.scrapers.get(&scope) {
         None => {
             log::error!(
-                "graph request with invalid scope: basearch='{}', stream='{}'",
+                "no scraper configured for scope: basearch='{}', stream='{}'",
                 scope.basearch,
                 scope.stream,
             );
@@ -156,11 +154,7 @@ pub(crate) async fn gb_serve_graph(
         Some(addr) => addr,
     };
 
-    let cached_graph = addr
-        .send(scraper::GetCachedGraph {
-            scope: scope.clone(),
-        })
-        .await??;
+    let cached_graph = addr.send(scraper::GetCachedGraph { scope }).await??;
 
     let final_graph = policy::filter_deadends(cached_graph);
 

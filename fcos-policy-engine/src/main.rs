@@ -9,10 +9,11 @@ mod settings;
 mod utils;
 
 use actix_web::{web, App, HttpResponse};
-use commons::{metrics, policy};
+use commons::{graph, metrics, policy};
 use failure::{Error, Fallible, ResultExt};
 use prometheus::{Histogram, IntCounter, IntGauge};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 use structopt::clap::{crate_name, crate_version};
@@ -68,11 +69,27 @@ fn main() -> Fallible<()> {
 
     let sys = actix::System::new("fcos_cincinnati_pe");
 
+    // TODO(lucab): get allowed scopes from config file.
+    let allowed_scopes = maplit::hashset! {
+        graph::GraphScope {
+            basearch: "x86_64".to_string(),
+            stream: "stable".to_string(),
+        },
+        graph::GraphScope {
+            basearch: "x86_64".to_string(),
+            stream: "testing".to_string(),
+        },
+        graph::GraphScope {
+            basearch: "x86_64".to_string(),
+            stream: "next".to_string(),
+        },
+    };
     let node_population = Arc::new(cbloom::Filter::new(
         service_settings.bloom_size,
         service_settings.bloom_max_population,
     ));
     let service_state = AppState {
+        scope_filter: Some(allowed_scopes),
         population: Arc::clone(&node_population),
         upstream_endpoint: service_settings.upstream_base.clone(),
         upstream_req_timeout: service_settings.upstream_req_timeout,
@@ -115,6 +132,7 @@ fn main() -> Fallible<()> {
 
 #[derive(Clone, Debug)]
 pub(crate) struct AppState {
+    scope_filter: Option<HashSet<graph::GraphScope>>,
     population: Arc<cbloom::Filter>,
     upstream_endpoint: reqwest::Url,
     upstream_req_timeout: Duration,
