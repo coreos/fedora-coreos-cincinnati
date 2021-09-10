@@ -77,15 +77,10 @@ fn main() -> Fallible<()> {
         (settings.service, settings.status)
     };
 
-    let mut scrapers = HashMap::with_capacity(service_settings.streams.len());
-    for stream in &service_settings.streams {
-        let scope = graph::GraphScope {
-            // TODO(lucab): get this through settings, and add 'aarch64'.
-            basearch: "x86_64".to_string(),
-            stream: stream.clone(),
-        };
+    let mut scrapers = HashMap::with_capacity(service_settings.scopes.len());
+    for scope in &service_settings.scopes {
         let addr = scraper::Scraper::new(scope.clone())?.start();
-        scrapers.insert(scope, addr);
+        scrapers.insert(scope.clone(), addr);
     }
 
     // TODO(lucab): get allowed scopes from config file.

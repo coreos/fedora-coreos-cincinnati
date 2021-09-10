@@ -1,4 +1,5 @@
-use super::config::FileConfig;
+use crate::config::FileConfig;
+use commons::graph::GraphScope;
 use failure::Fallible;
 use std::collections::BTreeSet;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -24,7 +25,7 @@ pub struct ServiceSettings {
     pub(crate) origin_allowlist: Option<Vec<String>>,
     pub(crate) ip_addr: IpAddr,
     pub(crate) port: u16,
-    pub(crate) streams: BTreeSet<String>,
+    pub(crate) scopes: BTreeSet<GraphScope>,
 }
 
 impl ServiceSettings {
@@ -32,8 +33,15 @@ impl ServiceSettings {
     const DEFAULT_GB_SERVICE_ADDR: Ipv4Addr = Ipv4Addr::UNSPECIFIED;
     /// Default TCP port for graph-builder main service.
     const DEFAULT_GB_SERVICE_PORT: u16 = 8080;
-    /// Default streams to process.
-    const DEFAULT_STREAMS: [&'static str; 3] = ["next", "stable", "testing"];
+    /// Default scopes (basearch plus stream) to process.
+    const DEFAULT_SCOPES: [(&'static str, &'static str); 6] = [
+        ("aarch64", "next"),
+        ("aarch64", "stable"),
+        ("aarch64", "testing"),
+        ("x86_64", "next"),
+        ("x86_64", "stable"),
+        ("x86_64", "testing"),
+    ];
 
     pub fn socket_addr(&self) -> SocketAddr {
         SocketAddr::new(self.ip_addr, self.port)
@@ -46,9 +54,12 @@ impl Default for ServiceSettings {
             origin_allowlist: None,
             ip_addr: Self::DEFAULT_GB_SERVICE_ADDR.into(),
             port: Self::DEFAULT_GB_SERVICE_PORT,
-            streams: Self::DEFAULT_STREAMS
+            scopes: Self::DEFAULT_SCOPES
                 .iter()
-                .map(ToString::to_string)
+                .map(|(basearch, stream)| GraphScope {
+                    basearch: basearch.to_string(),
+                    stream: stream.to_string(),
+                })
                 .collect(),
         }
     }
