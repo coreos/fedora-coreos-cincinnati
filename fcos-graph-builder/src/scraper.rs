@@ -165,6 +165,7 @@ impl Handler<GetCachedGraph> for Scraper {
 
     fn handle(&mut self, msg: GetCachedGraph, _ctx: &mut Self::Context) -> Self::Result {
         use failure::format_err;
+
         if msg.scope.basearch != self.scope.basearch {
             return Box::new(actix::fut::err(format_err!(
                 "unexpected basearch '{}'",
@@ -177,6 +178,10 @@ impl Handler<GetCachedGraph> for Scraper {
                 msg.scope.stream
             )));
         }
+
+        crate::CACHED_GRAPH_REQUESTS
+            .with_label_values(&[&self.scope.basearch, &self.scope.stream])
+            .inc();
         Box::new(actix::fut::ok(self.graph.clone()))
     }
 }

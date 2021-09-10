@@ -22,6 +22,11 @@ use structopt::StructOpt;
 static APP_LOG_TARGET: &str = "fcos_graph_builder";
 
 lazy_static::lazy_static! {
+    static ref CACHED_GRAPH_REQUESTS: IntCounterVec = register_int_counter_vec!(
+        "fcos_cincinnati_gb_cache_graph_requests_total",
+        "Total number of requests for a cached graph",
+        &["basearch", "stream"]
+    ).unwrap();
     static ref GRAPH_FINAL_EDGES: IntGaugeVec = register_int_gauge_vec!(
         "fcos_cincinnati_gb_scraper_graph_final_edges",
         "Number of edges in the cached graph, after processing",
