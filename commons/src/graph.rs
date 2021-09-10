@@ -212,7 +212,7 @@ impl Graph {
 }
 
 /// The scope of a cached graph, i.e. the specific stream and basearch that it is valid for.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct GraphScope {
     pub basearch: String,
     pub stream: String,
