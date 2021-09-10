@@ -10,10 +10,10 @@ mod settings;
 
 use actix::prelude::*;
 use actix_web::{web, App, HttpResponse};
-use commons::web::GraphQuery;
 use commons::{graph, metrics, policy};
 use failure::{Fallible, ResultExt};
 use prometheus::{IntCounterVec, IntGauge, IntGaugeVec};
+use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use structopt::clap::{crate_name, crate_version};
 use structopt::StructOpt;
@@ -135,11 +135,19 @@ pub(crate) struct AppState {
     scrapers: HashMap<graph::GraphScope, Addr<scraper::Scraper>>,
 }
 
+/// Mandatory parameters for querying a graph from graph-builder.
+#[derive(Deserialize)]
+struct GraphQuery {
+    basearch: Option<String>,
+    stream: Option<String>,
+}
+
 pub(crate) async fn gb_serve_graph(
-    data: actix_web::web::Data<AppState>,
-    query: actix_web::web::Query<GraphQuery>,
+    data: web::Data<AppState>,
+    web::Query(query): web::Query<GraphQuery>,
 ) -> Result<HttpResponse, failure::Error> {
-    let scope = match query.into_inner().validate_scope(&data.scope_filter) {
+    let scope = match commons::web::validate_scope(query.basearch, query.stream, &data.scope_filter)
+    {
         Err(e) => {
             log::error!("graph request with invalid scope: {}", e);
             return Ok(HttpResponse::BadRequest().finish());

@@ -138,6 +138,7 @@ pub(crate) struct AppState {
     upstream_req_timeout: Duration,
 }
 
+/// Mandatory parameters for querying a graph from policy-engine.
 #[derive(Serialize, Deserialize)]
 pub struct GraphQuery {
     basearch: Option<String>,
@@ -147,26 +148,33 @@ pub struct GraphQuery {
 }
 
 pub(crate) async fn pe_serve_graph(
-    data: actix_web::web::Data<AppState>,
-    actix_web::web::Query(query): actix_web::web::Query<GraphQuery>,
+    data: web::Data<AppState>,
+    web::Query(query): web::Query<GraphQuery>,
 ) -> Result<HttpResponse, Error> {
     pe_record_metrics(&data, &query);
 
-    let basearch = query
-        .basearch
-        .as_ref()
-        .map(String::from)
-        .unwrap_or_default();
-    let stream = query.stream.as_ref().map(String::from).unwrap_or_default();
-    trace!("graph query stream: {:#?}", stream);
+    let scope = match commons::web::validate_scope(
+        query.basearch.clone(),
+        query.stream.clone(),
+        &data.scope_filter,
+    ) {
+        Err(e) => {
+            log::error!("graph request with invalid scope: {}", e);
+            return Ok(HttpResponse::BadRequest().finish());
+        }
+        Ok(s) => {
+            log::trace!("graph query stream: {:#?}", s);
+            s
+        }
+    };
 
     let wariness = compute_wariness(&query);
     ROLLOUT_WARINESS.observe(wariness);
 
     let cached_graph = utils::fetch_graph_from_gb(
         data.upstream_endpoint.clone(),
-        stream.clone(),
-        basearch.clone(),
+        scope.stream,
+        scope.basearch,
         data.upstream_req_timeout,
     )
     .await?;
