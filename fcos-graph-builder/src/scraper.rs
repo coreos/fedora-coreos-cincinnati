@@ -11,7 +11,7 @@ const DEFAULT_HTTP_REQ_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 /// Release scraper.
 #[derive(Clone, Debug)]
 pub struct Scraper {
-    graph: graph::Graph,
+    graph: Vec<u8>,
     hclient: reqwest::Client,
     pause_secs: NonZeroU64,
     release_index_url: reqwest::Url,
@@ -33,7 +33,7 @@ impl Scraper {
             .build()?;
 
         let scraper = Self {
-            graph: graph::Graph::default(),
+            graph: vec![],
             hclient,
             pause_secs: NonZeroU64::new(30).expect("non-zero pause"),
             scope,
@@ -95,8 +95,9 @@ impl Scraper {
     }
 
     /// Update cached graph.
-    fn update_cached_graph(&mut self, graph: graph::Graph) {
-        self.graph = graph;
+    fn update_cached_graph(&mut self, graph: graph::Graph) -> Result<(), Error> {
+        let data = serde_json::to_vec_pretty(&graph).map_err(|e| failure::format_err!("{}", e))?;
+        self.graph = data;
 
         let refresh_timestamp = chrono::Utc::now();
         crate::LAST_REFRESH
@@ -104,10 +105,20 @@ impl Scraper {
             .set(refresh_timestamp.timestamp());
         crate::GRAPH_FINAL_EDGES
             .with_label_values(&[&self.scope.basearch, &self.scope.stream])
-            .set(self.graph.edges.len() as i64);
+            .set(graph.edges.len() as i64);
         crate::GRAPH_FINAL_RELEASES
             .with_label_values(&[&self.scope.basearch, &self.scope.stream])
-            .set(self.graph.nodes.len() as i64);
+            .set(graph.nodes.len() as i64);
+
+        log::trace!(
+            "cached graph for {}/{}: releases={}, edges={}",
+            self.scope.basearch,
+            self.scope.stream,
+            graph.nodes.len(),
+            graph.edges.len()
+        );
+
+        Ok(())
     }
 }
 
@@ -137,9 +148,9 @@ impl Handler<RefreshTick> for Scraper {
         let latest_graph = self.assemble_graph();
         let update_graph = actix::fut::wrap_future::<_, Self>(latest_graph)
             .map(|graph, actor, _ctx| {
-                match graph {
-                    Ok(graph) => actor.update_cached_graph(graph),
-                    Err(e) => log::error!("transient scraping failure: {}", e),
+                let res = graph.and_then(|g| actor.update_cached_graph(g));
+                if let Err(e) = res {
+                    log::error!("transient scraping failure: {}", e);
                 };
             })
             .then(|_r, actor, ctx| {
@@ -157,11 +168,11 @@ pub(crate) struct GetCachedGraph {
 }
 
 impl Message for GetCachedGraph {
-    type Result = Result<graph::Graph, Error>;
+    type Result = Result<Vec<u8>, Error>;
 }
 
 impl Handler<GetCachedGraph> for Scraper {
-    type Result = ResponseActFuture<Self, Result<graph::Graph, Error>>;
+    type Result = ResponseActFuture<Self, Result<Vec<u8>, Error>>;
 
     fn handle(&mut self, msg: GetCachedGraph, _ctx: &mut Self::Context) -> Self::Result {
         use failure::format_err;

@@ -1,4 +1,4 @@
-use crate::metadata;
+use crate::{metadata, policy};
 use failure::Fallible;
 use serde_derive::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -77,9 +77,12 @@ impl Graph {
 
         // Compute the update graph.
         let edges = Self::compute_edges(&nodes)?;
-
         let graph = Graph { nodes, edges };
-        Ok(graph)
+
+        // Filter deadends.
+        let final_graph = policy::filter_deadends(graph);
+
+        Ok(final_graph)
     }
 
     /// Compute edges based on graph metadata.
