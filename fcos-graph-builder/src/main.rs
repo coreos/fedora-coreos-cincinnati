@@ -10,7 +10,7 @@ mod settings;
 
 use actix::prelude::*;
 use actix_web::{web, App, HttpResponse};
-use commons::{graph, metrics, policy};
+use commons::{graph, metrics};
 use failure::{Fallible, ResultExt};
 use prometheus::{IntCounterVec, IntGauge, IntGaugeVec};
 use serde::Deserialize;
@@ -147,7 +147,14 @@ pub(crate) async fn gb_serve_graph(
             log::error!("graph request with invalid scope: {}", e);
             return Ok(HttpResponse::BadRequest().finish());
         }
-        Ok(s) => s,
+        Ok(s) => {
+            log::trace!(
+                "serving request for valid scope: basearch='{}', stream='{}'",
+                s.basearch,
+                s.stream
+            );
+            s
+        }
     };
 
     let addr = match data.scrapers.get(&scope) {
@@ -162,14 +169,10 @@ pub(crate) async fn gb_serve_graph(
         Some(addr) => addr,
     };
 
-    let cached_graph = addr.send(scraper::GetCachedGraph { scope }).await??;
+    let graph_json_bytes = addr.send(scraper::GetCachedGraph { scope }).await??;
 
-    let final_graph = policy::filter_deadends(cached_graph);
-
-    let json =
-        serde_json::to_string_pretty(&final_graph).map_err(|e| failure::format_err!("{}", e))?;
     let resp = HttpResponse::Ok()
         .content_type("application/json")
-        .body(json);
+        .body(graph_json_bytes);
     Ok(resp)
 }
