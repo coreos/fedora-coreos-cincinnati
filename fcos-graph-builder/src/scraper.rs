@@ -1,4 +1,5 @@
 use actix::prelude::*;
+use actix_web::web::Bytes;
 use commons::{graph, metadata};
 use failure::{Error, Fallible};
 use reqwest::Method;
@@ -11,7 +12,7 @@ const DEFAULT_HTTP_REQ_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 /// Release scraper.
 #[derive(Clone, Debug)]
 pub struct Scraper {
-    graph: Vec<u8>,
+    graph: Bytes,
     hclient: reqwest::Client,
     pause_secs: NonZeroU64,
     release_index_url: reqwest::Url,
@@ -21,6 +22,12 @@ pub struct Scraper {
 
 impl Scraper {
     pub(crate) fn new(scope: graph::GraphScope) -> Fallible<Self> {
+        let graph = {
+            let empty_graph = graph::Graph::default();
+            let data = serde_json::to_vec(&empty_graph)?;
+            Bytes::from(data)
+        };
+
         let vars = maplit::hashmap! {
             "basearch".to_string() => scope.basearch.clone(),
             "stream".to_string() => scope.stream.clone(),
@@ -33,7 +40,7 @@ impl Scraper {
             .build()?;
 
         let scraper = Self {
-            graph: vec![],
+            graph,
             hclient,
             pause_secs: NonZeroU64::new(30).expect("non-zero pause"),
             scope,
@@ -97,7 +104,7 @@ impl Scraper {
     /// Update cached graph.
     fn update_cached_graph(&mut self, graph: graph::Graph) -> Result<(), Error> {
         let data = serde_json::to_vec_pretty(&graph).map_err(|e| failure::format_err!("{}", e))?;
-        self.graph = data;
+        self.graph = Bytes::from(data);
 
         let refresh_timestamp = chrono::Utc::now();
         crate::LAST_REFRESH
@@ -168,11 +175,11 @@ pub(crate) struct GetCachedGraph {
 }
 
 impl Message for GetCachedGraph {
-    type Result = Result<Vec<u8>, Error>;
+    type Result = Result<Bytes, Error>;
 }
 
 impl Handler<GetCachedGraph> for Scraper {
-    type Result = ResponseActFuture<Self, Result<Vec<u8>, Error>>;
+    type Result = ResponseActFuture<Self, Result<Bytes, Error>>;
 
     fn handle(&mut self, msg: GetCachedGraph, _ctx: &mut Self::Context) -> Self::Result {
         use failure::format_err;
@@ -193,6 +200,7 @@ impl Handler<GetCachedGraph> for Scraper {
         crate::CACHED_GRAPH_REQUESTS
             .with_label_values(&[&self.scope.basearch, &self.scope.stream])
             .inc();
+
         Box::new(actix::fut::ok(self.graph.clone()))
     }
 }
