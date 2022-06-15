@@ -12,19 +12,10 @@ pub struct CincinnatiPayload {
 }
 
 /// Cincinnati update-graph, a DAG with releases (nodes) and update paths (edges).
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Graph {
     pub nodes: Vec<CincinnatiPayload>,
     pub edges: Vec<(u64, u64)>,
-}
-
-impl Default for Graph {
-    fn default() -> Self {
-        Self {
-            nodes: vec![],
-            edges: vec![],
-        }
-    }
 }
 
 impl Graph {
