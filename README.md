@@ -7,10 +7,11 @@ This repository contains the logic for Fedora CoreOS auto-updates backend.
 
 This service provides an implementation of the [Cincinnati protocol][cincinnati], which is consumed by on-host update agents (like [Zincati][zincati]).
 
-This workspace can be built with `cargo build` and contains the following binaries:
+This workspace can be built with `cargo build` (see [quickstart][quickstart] instructions) and contains the following binaries:
 
  * `fcos-graph-builder`: a service which builds and caches the raw update graph
  * `fcos-policy-engine`: a web service which handles requests from agents
 
 [cincinnati]: https://github.com/openshift/cincinnati
 [zincati]: https://github.com/coreos/zincati
+[quickstart]: https://github.com/coreos/fedora-coreos-cincinnati/blob/main/docs/quickstart.md
