@@ -12,6 +12,7 @@ use actix::prelude::*;
 use actix_web::{web, App, HttpResponse};
 use commons::{graph, metrics};
 use failure::{Fallible, ResultExt};
+use futures::FutureExt;
 use prometheus::{IntCounterVec, IntGauge, IntGaugeVec};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
@@ -67,7 +68,7 @@ fn main() -> Fallible<()> {
         .try_init()
         .context("failed to initialize logging")?;
 
-    let sys = actix::System::new("fcos_cincinnati_gb");
+    let sys = actix::System::new();
 
     // Parse config file and validate settings.
     let (service_settings, status_settings) = {
@@ -79,7 +80,8 @@ fn main() -> Fallible<()> {
 
     let mut scrapers = HashMap::with_capacity(service_settings.scopes.len());
     for scope in &service_settings.scopes {
-        let addr = scraper::Scraper::new(scope.clone())?.start();
+        let entry = scraper::Scraper::new(scope.clone())?;
+        let addr = sys.block_on(async { entry.start() });
         scrapers.insert(scope.clone(), addr);
     }
 
@@ -97,7 +99,7 @@ fn main() -> Fallible<()> {
     let service_socket = service_settings.socket_addr();
     debug!("main service address: {}", service_socket);
     let gb_service = service_state.clone();
-    actix_web::HttpServer::new(move || {
+    let serv = actix_web::HttpServer::new(move || {
         App::new()
             .wrap(commons::web::build_cors_middleware(
                 &service_settings.origin_allowlist,
@@ -107,18 +109,20 @@ fn main() -> Fallible<()> {
     })
     .bind(service_socket)?
     .run();
+    actix::System::current().arbiter().spawn(serv.map(|_| ()));
 
     // Graph-builder status service.
     let status_socket = status_settings.socket_addr();
     debug!("status service address: {}", status_socket);
     let gb_status = service_state;
-    actix_web::HttpServer::new(move || {
+    let serv2 = actix_web::HttpServer::new(move || {
         App::new()
             .data(gb_status.clone())
             .route("/metrics", web::get().to(metrics::serve_metrics))
     })
     .bind(status_socket)?
     .run();
+    actix::System::current().arbiter().spawn(serv2.map(|_| ()));
 
     sys.run()?;
     Ok(())
@@ -140,6 +144,16 @@ struct GraphQuery {
 pub(crate) async fn gb_serve_graph(
     data: web::Data<AppState>,
     web::Query(query): web::Query<GraphQuery>,
+) -> HttpResponse {
+    match gb_serve_graph_inner(data, query).await {
+        Err(_) => HttpResponse::InternalServerError().finish(),
+        Ok(resp) => resp,
+    }
+}
+
+pub(crate) async fn gb_serve_graph_inner(
+    data: web::Data<AppState>,
+    query: GraphQuery,
 ) -> Result<HttpResponse, failure::Error> {
     let scope = match commons::web::validate_scope(query.basearch, query.stream, &data.scope_filter)
     {

@@ -11,6 +11,7 @@ mod utils;
 use actix_web::{web, App, HttpResponse};
 use commons::{graph, metrics, policy};
 use failure::{Error, Fallible, ResultExt};
+use futures::FutureExt;
 use prometheus::{Histogram, IntCounter, IntGauge};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
@@ -67,7 +68,7 @@ fn main() -> Fallible<()> {
         (settings.service, settings.status)
     };
 
-    let sys = actix::System::new("fcos_cincinnati_pe");
+    let sys = actix::System::new();
 
     let node_population = Arc::new(cbloom::Filter::new(
         service_settings.bloom_size,
@@ -92,7 +93,7 @@ fn main() -> Fallible<()> {
     // Policy-engine main service.
     let service_socket = service_settings.socket_addr();
     debug!("main service address: {}", service_socket);
-    actix_web::HttpServer::new(move || {
+    let serv = actix_web::HttpServer::new(move || {
         App::new()
             .wrap(commons::web::build_cors_middleware(
                 &service_settings.origin_allowlist,
@@ -102,16 +103,18 @@ fn main() -> Fallible<()> {
     })
     .bind(service_socket)?
     .run();
+    actix::System::current().arbiter().spawn(serv.map(|_| ()));
 
     // Policy-engine status service.
     let status_socket = status_settings.socket_addr();
     debug!("status service address: {}", status_socket);
-    actix_web::HttpServer::new(move || {
+    let serv2 = actix_web::HttpServer::new(move || {
         App::new().route("/metrics", web::get().to(metrics::serve_metrics))
     })
     .bind(status_socket)?
     .run();
 
+    actix::System::current().arbiter().spawn(serv2.map(|_| ()));
     sys.run()?;
     Ok(())
 }
@@ -136,6 +139,16 @@ pub struct GraphQuery {
 pub(crate) async fn pe_serve_graph(
     data: web::Data<AppState>,
     web::Query(query): web::Query<GraphQuery>,
+) -> HttpResponse {
+    match pe_serve_graph_inner(data, query).await {
+        Err(_) => HttpResponse::InternalServerError().finish(),
+        Ok(resp) => resp,
+    }
+}
+
+pub(crate) async fn pe_serve_graph_inner(
+    data: web::Data<AppState>,
+    query: GraphQuery,
 ) -> Result<HttpResponse, Error> {
     pe_record_metrics(&data, &query);
 

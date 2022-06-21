@@ -3,6 +3,7 @@ use actix_web::web::Bytes;
 use commons::{graph, metadata};
 use failure::{Error, Fallible};
 use reqwest::Method;
+use std::future::Future;
 use std::num::NonZeroU64;
 use std::time::Duration;
 
@@ -166,7 +167,7 @@ impl Handler<RefreshTick> for Scraper {
                 actix::fut::ok(())
             });
 
-        Box::new(update_graph)
+        Box::pin(update_graph)
     }
 }
 
@@ -185,13 +186,13 @@ impl Handler<GetCachedGraph> for Scraper {
         use failure::format_err;
 
         if msg.scope.basearch != self.scope.basearch {
-            return Box::new(actix::fut::err(format_err!(
+            return Box::pin(actix::fut::err(format_err!(
                 "unexpected basearch '{}'",
                 msg.scope.basearch
             )));
         }
         if msg.scope.stream != self.scope.stream {
-            return Box::new(actix::fut::err(format_err!(
+            return Box::pin(actix::fut::err(format_err!(
                 "unexpected stream '{}'",
                 msg.scope.stream
             )));
@@ -201,7 +202,7 @@ impl Handler<GetCachedGraph> for Scraper {
             .with_label_values(&[&self.scope.basearch, &self.scope.stream])
             .inc();
 
-        Box::new(actix::fut::ok(self.graph.clone()))
+        Box::pin(actix::fut::ok(self.graph.clone()))
     }
 }
 
