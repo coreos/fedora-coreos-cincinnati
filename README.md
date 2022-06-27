@@ -12,6 +12,9 @@ This workspace can be built with `cargo build` (see [quickstart][quickstart] ins
  * `fcos-graph-builder`: a service which builds and caches the raw update graph
  * `fcos-policy-engine`: a web service which handles requests from agents
 
+The instance of this service used by default on Fedora CoreOS is hosted in the Fedora infrastructure. More details can be found in the [Fedora infra docs][infra-docs].
+
 [cincinnati]: https://github.com/openshift/cincinnati
 [zincati]: https://github.com/coreos/zincati
 [quickstart]: https://github.com/coreos/fedora-coreos-cincinnati/blob/main/docs/quickstart.md
+[infra-docs]: https://docs.fedoraproject.org/en-US/infra/sysadmin_guide/coreos-cincinnati/
