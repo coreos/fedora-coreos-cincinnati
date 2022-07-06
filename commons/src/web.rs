@@ -1,5 +1,5 @@
 use crate::graph::GraphScope;
-use actix_cors::CorsFactory;
+use actix_cors::Cors;
 use failure::{bail, ensure, err_msg};
 use std::collections::HashSet;
 
@@ -7,8 +7,8 @@ use std::collections::HashSet;
 ///
 /// By default, this allows all CORS requests from all origins.
 /// If an allowlist is provided, only those origins are allowed instead.
-pub fn build_cors_middleware(origin_allowlist: &Option<Vec<String>>) -> CorsFactory {
-    let mut builder = actix_cors::Cors::new();
+pub fn build_cors_middleware(origin_allowlist: &Option<Vec<String>>) -> Cors {
+    let mut builder = Cors::default();
     match origin_allowlist {
         Some(allowed) => {
             for origin in allowed {
@@ -19,7 +19,7 @@ pub fn build_cors_middleware(origin_allowlist: &Option<Vec<String>>) -> CorsFact
             builder = builder.send_wildcard();
         }
     };
-    builder.finish()
+    builder
 }
 
 /// Validate input query parameters into a valid graph scope.
