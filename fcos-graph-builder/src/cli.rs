@@ -1,16 +1,16 @@
+use clap::{ArgAction, Parser};
 use log::LevelFilter;
 use std::path::PathBuf;
-use structopt::StructOpt;
 
 /// CLI configuration options.
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 pub(crate) struct CliOptions {
     /// Verbosity level (higher is more verbose).
-    #[structopt(short = "v", parse(from_occurrences))]
+    #[clap(short = 'v', action = ArgAction::Count)]
     verbosity: u8,
 
     /// Path to configuration file.
-    #[structopt(short = "c")]
+    #[clap(short = 'c')]
     pub config_path: PathBuf,
 }
 
