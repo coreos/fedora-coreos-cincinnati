@@ -9,6 +9,7 @@ mod settings;
 mod utils;
 
 use actix_web::{web, App, HttpResponse};
+use clap::{crate_name, crate_version, Parser};
 use commons::{graph, metrics, policy};
 use failure::{Error, Fallible, ResultExt};
 use prometheus::{Histogram, IntCounter, IntGauge};
@@ -16,8 +17,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
-use structopt::clap::{crate_name, crate_version};
-use structopt::StructOpt;
 
 /// Top-level log target for this application.
 static APP_LOG_TARGET: &str = "fcos_policy_engine";
@@ -49,7 +48,7 @@ lazy_static::lazy_static! {
 
 fn main() -> Fallible<()> {
     // Parse command-line options.
-    let cli_opts = cli::CliOptions::from_args();
+    let cli_opts = cli::CliOptions::parse();
 
     // Setup logging.
     env_logger::Builder::from_default_env()

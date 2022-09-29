@@ -10,13 +10,12 @@ mod settings;
 
 use actix::prelude::*;
 use actix_web::{web, App, HttpResponse};
+use clap::{crate_name, crate_version, Parser};
 use commons::{graph, metrics};
 use failure::{Fallible, ResultExt};
 use prometheus::{IntCounterVec, IntGauge, IntGaugeVec};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
-use structopt::clap::{crate_name, crate_version};
-use structopt::StructOpt;
 
 /// Top-level log target for this application.
 static APP_LOG_TARGET: &str = "fcos_graph_builder";
@@ -57,7 +56,7 @@ lazy_static::lazy_static! {
 
 fn main() -> Fallible<()> {
     // Parse command-line options.
-    let cli_opts = cli::CliOptions::from_args();
+    let cli_opts = cli::CliOptions::parse();
 
     // Setup logging.
     env_logger::Builder::from_default_env()
