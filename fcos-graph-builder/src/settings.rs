@@ -34,11 +34,12 @@ impl ServiceSettings {
     /// Default TCP port for graph-builder main service.
     const DEFAULT_GB_SERVICE_PORT: u16 = 8080;
     /// Default scopes (basearch plus stream) to process.
-    const DEFAULT_SCOPES: [(&'static str, &'static str); 11] = [
+    const DEFAULT_SCOPES: [(&'static str, &'static str); 12] = [
         ("aarch64", "next"),
         ("aarch64", "stable"),
         ("aarch64", "testing"),
         ("ppc64le", "next"),
+        ("ppc64le", "stable"),
         ("ppc64le", "testing"),
         ("s390x", "next"),
         ("s390x", "stable"),
