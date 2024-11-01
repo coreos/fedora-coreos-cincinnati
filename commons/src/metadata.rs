@@ -24,55 +24,55 @@ pub static START_EPOCH: &str = "org.fedoraproject.coreos.updates.start_epoch";
 pub static START_VALUE: &str = "org.fedoraproject.coreos.updates.start_value";
 
 /// Fedora CoreOS release index.
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct ReleasesJSON {
     pub releases: Vec<Release>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct Release {
     pub commits: Vec<ReleaseCommit>,
     pub version: String,
     pub metadata: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct ReleaseCommit {
     pub architecture: String,
     pub checksum: String,
 }
 
 /// Fedora CoreOS updates metadata
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct UpdatesJSON {
     pub stream: String,
     pub releases: Vec<ReleaseUpdate>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct ReleaseUpdate {
     pub version: String,
     pub metadata: UpdateMetadata,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct UpdateMetadata {
     pub barrier: Option<UpdateBarrier>,
     pub deadend: Option<UpdateDeadend>,
     pub rollout: Option<UpdateRollout>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct UpdateBarrier {
     pub reason: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct UpdateDeadend {
     pub reason: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct UpdateRollout {
     pub start_epoch: Option<i64>,
     pub start_percentage: Option<f64>,
