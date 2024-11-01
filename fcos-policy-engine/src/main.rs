@@ -130,6 +130,7 @@ pub struct GraphQuery {
     stream: Option<String>,
     rollout_wariness: Option<String>,
     node_uuid: Option<String>,
+    oci: Option<bool>,
 }
 
 pub(crate) async fn pe_serve_graph(
@@ -141,6 +142,7 @@ pub(crate) async fn pe_serve_graph(
     let scope = match commons::web::validate_scope(
         query.basearch.clone(),
         query.stream.clone(),
+        query.oci,
         &data.scope_filter,
     ) {
         Err(e) => {
@@ -160,6 +162,7 @@ pub(crate) async fn pe_serve_graph(
         data.upstream_endpoint.clone(),
         scope.stream,
         scope.basearch,
+        scope.oci,
         data.upstream_req_timeout,
     )
     .await?;

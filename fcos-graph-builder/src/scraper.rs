@@ -16,6 +16,8 @@ pub struct Scraper {
     stream: String,
     /// arch -> graph
     graphs: HashMap<String, Bytes>,
+    /// arch -> graph
+    oci_graphs: HashMap<String, Bytes>,
     hclient: reqwest::Client,
     pause_secs: NonZeroU64,
     release_index_url: reqwest::Url,
@@ -30,6 +32,10 @@ impl Scraper {
             Bytes::from(data)
         };
         let graphs = arches
+            .iter()
+            .map(|arch| (arch.clone(), empty.clone()))
+            .collect();
+        let oci_graphs = arches
             .into_iter()
             .map(|arch| (arch, empty.clone()))
             .collect();
@@ -46,6 +52,7 @@ impl Scraper {
 
         let scraper = Self {
             graphs,
+            oci_graphs,
             hclient,
             pause_secs: NonZeroU64::new(30).expect("non-zero pause"),
             stream,
@@ -95,7 +102,9 @@ impl Scraper {
     /// Combine release-index and updates metadata.
     fn assemble_graphs(
         &self,
-    ) -> impl Future<Output = Result<HashMap<String, graph::Graph>, Error>> {
+    ) -> impl Future<
+        Output = Result<(HashMap<String, graph::Graph>, HashMap<String, graph::Graph>), Error>,
+    > {
         let stream_releases = self.fetch_releases();
         let stream_updates = self.fetch_updates();
 
@@ -104,10 +113,11 @@ impl Scraper {
         let arches: Vec<String> = self.graphs.keys().cloned().collect();
 
         async move {
-            let mut map = HashMap::with_capacity(arches.len());
             let (graph, updates) =
                 futures::future::try_join(stream_releases, stream_updates).await?;
-            for arch in arches {
+            // first the legacy graphs
+            let mut map = HashMap::with_capacity(arches.len());
+            for arch in &arches {
                 map.insert(
                     arch.clone(),
                     graph::Graph::from_metadata(
@@ -116,38 +126,66 @@ impl Scraper {
                         graph::GraphScope {
                             basearch: arch.clone(),
                             stream: stream.clone(),
+                            oci: false,
                         },
                     )?,
                 );
             }
-            Ok(map)
+            // now the OCI graphs
+            let mut oci_map = HashMap::with_capacity(arches.len());
+            for arch in &arches {
+                oci_map.insert(
+                    arch.clone(),
+                    graph::Graph::from_metadata(
+                        graph.clone(),
+                        updates.clone(),
+                        graph::GraphScope {
+                            basearch: arch.clone(),
+                            stream: stream.clone(),
+                            oci: true,
+                        },
+                    )?,
+                );
+            }
+            Ok((map, oci_map))
         }
     }
 
     /// Update cached graph.
-    fn update_cached_graph(&mut self, arch: String, graph: graph::Graph) -> Result<(), Error> {
+    fn update_cached_graph(
+        &mut self,
+        arch: String,
+        oci: bool,
+        graph: graph::Graph,
+    ) -> Result<(), Error> {
         let data = serde_json::to_vec_pretty(&graph).map_err(|e| failure::format_err!("{}", e))?;
+        let graph_type = if oci { "oci" } else { "checksum" };
 
         let refresh_timestamp = chrono::Utc::now();
         crate::LAST_REFRESH
-            .with_label_values(&[&arch, &self.stream])
+            .with_label_values(&[&arch, &self.stream, graph_type])
             .set(refresh_timestamp.timestamp());
         crate::GRAPH_FINAL_EDGES
-            .with_label_values(&[&arch, &self.stream])
+            .with_label_values(&[&arch, &self.stream, graph_type])
             .set(graph.edges.len() as i64);
         crate::GRAPH_FINAL_RELEASES
-            .with_label_values(&[&arch, &self.stream])
+            .with_label_values(&[&arch, &self.stream, graph_type])
             .set(graph.nodes.len() as i64);
 
         log::trace!(
-            "cached graph for {}/{}: releases={}, edges={}",
+            "cached graph for {}/{}/oci={}: releases={}, edges={}",
             &arch,
             self.stream,
+            oci,
             graph.nodes.len(),
             graph.edges.len()
         );
 
-        self.graphs.insert(arch, Bytes::from(data));
+        if oci {
+            self.oci_graphs.insert(arch, Bytes::from(data));
+        } else {
+            self.graphs.insert(arch, Bytes::from(data));
+        }
         Ok(())
     }
 }
@@ -178,9 +216,11 @@ impl Handler<RefreshTick> for Scraper {
         let latest_graphs = self.assemble_graphs();
         let update_graphs = actix::fut::wrap_future::<_, Self>(latest_graphs)
             .map(|graphs, actor, _ctx| {
-                let res: Result<(), Error> = graphs.and_then(|g| {
+                let res: Result<(), Error> = graphs.and_then(|(g, oci_g)| {
                     g.into_iter()
-                        .map(|(arch, graph)| actor.update_cached_graph(arch, graph))
+                        .map(|(arch, graph)| (arch, false, graph))
+                        .chain(oci_g.into_iter().map(|(arch, graph)| (arch, true, graph)))
+                        .map(|(arch, oci, graph)| actor.update_cached_graph(arch, oci, graph))
                         .collect()
                 });
                 if let Err(e) = res {
@@ -210,6 +250,7 @@ impl Handler<GetCachedGraph> for Scraper {
 
     fn handle(&mut self, msg: GetCachedGraph, _ctx: &mut Self::Context) -> Self::Result {
         use failure::format_err;
+        let graph_type = if msg.scope.oci { "oci" } else { "checksum" };
 
         if msg.scope.stream != self.stream {
             return Box::new(actix::fut::err(format_err!(
@@ -217,9 +258,14 @@ impl Handler<GetCachedGraph> for Scraper {
                 msg.scope.stream
             )));
         }
-        if let Some(graph) = self.graphs.get(&msg.scope.basearch) {
+        let target_graphmap = if msg.scope.oci {
+            &self.oci_graphs
+        } else {
+            &self.graphs
+        };
+        if let Some(graph) = target_graphmap.get(&msg.scope.basearch) {
             crate::CACHED_GRAPH_REQUESTS
-                .with_label_values(&[&msg.scope.basearch, &msg.scope.stream])
+                .with_label_values(&[&msg.scope.basearch, &msg.scope.stream, &graph_type])
                 .inc();
 
             Box::new(actix::fut::ok(graph.clone()))

@@ -32,6 +32,8 @@ pub struct ReleasesJSON {
 #[derive(Clone, Debug, Deserialize)]
 pub struct Release {
     pub commits: Vec<ReleaseCommit>,
+    #[serde(rename = "oci-images")]
+    pub oci_images: Option<Vec<ReleaseOciImage>>,
     pub version: String,
     pub metadata: String,
 }
@@ -40,6 +42,14 @@ pub struct Release {
 pub struct ReleaseCommit {
     pub architecture: String,
     pub checksum: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ReleaseOciImage {
+    pub architecture: String,
+    pub image: String,
+    #[serde(rename = "digest-ref")]
+    pub digest_ref: String,
 }
 
 /// Fedora CoreOS updates metadata

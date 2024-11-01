@@ -24,22 +24,22 @@ lazy_static::lazy_static! {
     static ref CACHED_GRAPH_REQUESTS: IntCounterVec = register_int_counter_vec!(
         "fcos_cincinnati_gb_cache_graph_requests_total",
         "Total number of requests for a cached graph",
-        &["basearch", "stream"]
+        &["basearch", "stream", "type"]
     ).unwrap();
     static ref GRAPH_FINAL_EDGES: IntGaugeVec = register_int_gauge_vec!(
         "fcos_cincinnati_gb_scraper_graph_final_edges",
         "Number of edges in the cached graph, after processing",
-        &["basearch", "stream"]
+        &["basearch", "stream", "type"]
     ).unwrap();
     static ref GRAPH_FINAL_RELEASES: IntGaugeVec = register_int_gauge_vec!(
         "fcos_cincinnati_gb_scraper_graph_final_releases",
         "Number of releases in the cached graph, after processing",
-        &["basearch", "stream"]
+        &["basearch", "stream", "type"]
     ).unwrap();
     static ref LAST_REFRESH: IntGaugeVec = register_int_gauge_vec!(
        "fcos_cincinnati_gb_scraper_graph_last_refresh_timestamp",
         "UTC timestamp of last graph refresh",
-        &["basearch", "stream"]
+        &["basearch", "stream", "type"]
     ).unwrap();
     static ref UPSTREAM_SCRAPES: IntCounterVec = register_int_counter_vec!(
        "fcos_cincinnati_gb_scraper_upstream_scrapes_total",
@@ -138,23 +138,29 @@ pub(crate) struct AppState {
 struct GraphQuery {
     basearch: Option<String>,
     stream: Option<String>,
+    oci: Option<bool>,
 }
 
 pub(crate) async fn gb_serve_graph(
     data: web::Data<AppState>,
     web::Query(query): web::Query<GraphQuery>,
 ) -> Result<HttpResponse, failure::Error> {
-    let scope = match commons::web::validate_scope(query.basearch, query.stream, &data.scope_filter)
-    {
+    let scope = match commons::web::validate_scope(
+        query.basearch,
+        query.stream,
+        query.oci,
+        &data.scope_filter,
+    ) {
         Err(e) => {
             log::error!("graph request with invalid scope: {}", e);
             return Ok(HttpResponse::BadRequest().finish());
         }
         Ok(s) => {
             log::trace!(
-                "serving request for valid scope: basearch='{}', stream='{}'",
+                "serving request for valid scope: basearch='{}', stream='{}', oci='{}'",
                 s.basearch,
-                s.stream
+                s.stream,
+                s.oci,
             );
             s
         }
