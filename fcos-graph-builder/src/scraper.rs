@@ -17,7 +17,7 @@ pub struct Scraper {
     pause_secs: NonZeroU64,
     release_index_url: reqwest::Url,
     scope: graph::GraphScope,
-    stream_metadata_url: reqwest::Url,
+    updates_url: reqwest::Url,
 }
 
 impl Scraper {
@@ -33,7 +33,7 @@ impl Scraper {
             "stream".to_string() => scope.stream.clone(),
         };
         let releases_json = envsubst::substitute(metadata::RELEASES_JSON, &vars)?;
-        let stream_json = envsubst::substitute(metadata::STREAM_JSON, &vars)?;
+        let updates_json = envsubst::substitute(metadata::UPDATES_JSON, &vars)?;
         let hclient = reqwest::ClientBuilder::new()
             .pool_idle_timeout(Some(Duration::from_secs(10)))
             .timeout(DEFAULT_HTTP_REQ_TIMEOUT)
@@ -45,7 +45,7 @@ impl Scraper {
             pause_secs: NonZeroU64::new(30).expect("non-zero pause"),
             scope,
             release_index_url: reqwest::Url::parse(&releases_json)?,
-            stream_metadata_url: reqwest::Url::parse(&stream_json)?,
+            updates_url: reqwest::Url::parse(&updates_json)?,
         };
         Ok(scraper)
     }
@@ -75,7 +75,7 @@ impl Scraper {
 
     /// Fetch updates metadata.
     fn fetch_updates(&self) -> impl Future<Output = Result<metadata::UpdatesJSON, Error>> {
-        let target = self.stream_metadata_url.clone();
+        let target = self.updates_url.clone();
         let req = self.new_request(Method::GET, target);
 
         async {

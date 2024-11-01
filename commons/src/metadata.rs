@@ -6,8 +6,8 @@ use serde_derive::Deserialize;
 pub static RELEASES_JSON: &str =
     "https://builds.coreos.fedoraproject.org/prod/streams/${stream}/releases.json";
 
-/// Templated URL for stream metadata.
-pub static STREAM_JSON: &str = "https://builds.coreos.fedoraproject.org/updates/${stream}.json";
+/// Templated URL for updates metadata.
+pub static UPDATES_JSON: &str = "https://builds.coreos.fedoraproject.org/updates/${stream}.json";
 
 pub static SCHEME: &str = "org.fedoraproject.coreos.scheme";
 
