@@ -51,7 +51,7 @@ impl Default for ServiceSettings {
             origin_allowlist: None,
             ip_addr: Self::DEFAULT_GB_SERVICE_ADDR.into(),
             port: Self::DEFAULT_GB_SERVICE_PORT,
-            streams: Self::DEFAULT_STREAMS.iter().map(|&t| t).collect(),
+            streams: Self::DEFAULT_STREAMS.iter().copied().collect(),
         }
     }
 }

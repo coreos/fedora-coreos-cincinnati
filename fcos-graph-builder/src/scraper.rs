@@ -220,8 +220,9 @@ impl Handler<RefreshTick> for Scraper {
                     g.into_iter()
                         .map(|(arch, graph)| (arch, false, graph))
                         .chain(oci_g.into_iter().map(|(arch, graph)| (arch, true, graph)))
-                        .map(|(arch, oci, graph)| actor.update_cached_graph(arch, oci, graph))
-                        .collect()
+                        .try_for_each(|(arch, oci, graph)| {
+                            actor.update_cached_graph(arch, oci, graph)
+                        })
                 });
                 if let Err(e) = res {
                     log::error!("transient scraping failure: {}", e);
@@ -265,15 +266,15 @@ impl Handler<GetCachedGraph> for Scraper {
         };
         if let Some(graph) = target_graphmap.get(&msg.scope.basearch) {
             crate::CACHED_GRAPH_REQUESTS
-                .with_label_values(&[&msg.scope.basearch, &msg.scope.stream, &graph_type])
+                .with_label_values(&[&msg.scope.basearch, &msg.scope.stream, graph_type])
                 .inc();
 
             Box::new(actix::fut::ok(graph.clone()))
         } else {
-            return Box::new(actix::fut::err(format_err!(
+            Box::new(actix::fut::err(format_err!(
                 "unexpected basearch '{}'",
                 msg.scope.basearch
-            )));
+            )))
         }
     }
 }

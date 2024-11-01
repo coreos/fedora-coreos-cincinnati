@@ -190,7 +190,7 @@ fn compute_wariness(params: &GraphQuery) -> f64 {
         .unwrap_or_default()
         .parse::<f64>()
     {
-        let wariness = input.max(0.0).min(1.0);
+        let wariness = input.clamp(0.0, 1.0);
         return wariness;
     }
 
@@ -207,9 +207,9 @@ fn compute_wariness(params: &GraphQuery) -> f64 {
         uuid.hash(&mut hasher);
         let digest = hasher.finish();
         // Scale down.
-        let scaled = (digest as f64) / (std::u64::MAX as f64);
+        let scaled = (digest as f64) / (u64::MAX as f64);
         // Clamp within limits.
-        scaled.max(COMPUTED_MIN).min(COMPUTED_MAX)
+        scaled.clamp(COMPUTED_MIN, COMPUTED_MAX)
     };
 
     wariness

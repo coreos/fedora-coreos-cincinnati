@@ -30,7 +30,7 @@ pub fn throttle_rollouts(input: Graph, client_wariness: f64) -> Graph {
 
     for (index, release) in graph.nodes.iter().enumerate() {
         // Skip if this release is not being rolled out.
-        if release.metadata.get(metadata::ROLLOUT).is_none() {
+        if !release.metadata.contains_key(metadata::ROLLOUT) {
             continue;
         };
 
