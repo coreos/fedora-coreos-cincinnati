@@ -56,6 +56,7 @@ impl Scraper {
         method: reqwest::Method,
         url: reqwest::Url,
     ) -> Fallible<reqwest::RequestBuilder> {
+        log::trace!("building new request for {url}");
         let builder = self.hclient.request(method, url);
         Ok(builder)
     }
