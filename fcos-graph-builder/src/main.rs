@@ -24,27 +24,27 @@ lazy_static::lazy_static! {
     static ref CACHED_GRAPH_REQUESTS: IntCounterVec = register_int_counter_vec!(
         "fcos_cincinnati_gb_cache_graph_requests_total",
         "Total number of requests for a cached graph",
-        &["basearch", "stream"]
+        &["basearch", "stream", "type"]
     ).unwrap();
     static ref GRAPH_FINAL_EDGES: IntGaugeVec = register_int_gauge_vec!(
         "fcos_cincinnati_gb_scraper_graph_final_edges",
         "Number of edges in the cached graph, after processing",
-        &["basearch", "stream"]
+        &["basearch", "stream", "type"]
     ).unwrap();
     static ref GRAPH_FINAL_RELEASES: IntGaugeVec = register_int_gauge_vec!(
         "fcos_cincinnati_gb_scraper_graph_final_releases",
         "Number of releases in the cached graph, after processing",
-        &["basearch", "stream"]
+        &["basearch", "stream", "type"]
     ).unwrap();
     static ref LAST_REFRESH: IntGaugeVec = register_int_gauge_vec!(
        "fcos_cincinnati_gb_scraper_graph_last_refresh_timestamp",
         "UTC timestamp of last graph refresh",
-        &["basearch", "stream"]
+        &["basearch", "stream", "type"]
     ).unwrap();
     static ref UPSTREAM_SCRAPES: IntCounterVec = register_int_counter_vec!(
        "fcos_cincinnati_gb_scraper_upstream_scrapes_total",
        "Total number of upstream scrapes",
-        &["basearch", "stream"]
+        &["stream"]
     ).unwrap();
     // NOTE(lucab): alternatively this could come from the runtime library, see
     // https://prometheus.io/docs/instrumenting/writing_clientlibs/#process-metrics
@@ -76,10 +76,14 @@ fn main() -> Fallible<()> {
         (settings.service, settings.status)
     };
 
-    let mut scrapers = HashMap::with_capacity(service_settings.scopes.len());
-    for scope in &service_settings.scopes {
-        let addr = scraper::Scraper::new(scope.clone())?.start();
-        scrapers.insert(scope.clone(), addr);
+    let mut scrapers = HashMap::with_capacity(service_settings.streams.len());
+    for (&stream, &arches) in &service_settings.streams {
+        let addr = scraper::Scraper::new(
+            stream.to_string(),
+            arches.iter().map(|&arch| String::from(arch)).collect(),
+        )?
+        .start();
+        scrapers.insert(stream.to_string(), addr);
     }
 
     // TODO(lucab): get allowed scopes from config file.
@@ -126,7 +130,7 @@ fn main() -> Fallible<()> {
 #[derive(Clone, Debug)]
 pub(crate) struct AppState {
     scope_filter: Option<HashSet<graph::GraphScope>>,
-    scrapers: HashMap<graph::GraphScope, Addr<scraper::Scraper>>,
+    scrapers: HashMap<String, Addr<scraper::Scraper>>,
 }
 
 /// Mandatory parameters for querying a graph from graph-builder.
@@ -134,29 +138,35 @@ pub(crate) struct AppState {
 struct GraphQuery {
     basearch: Option<String>,
     stream: Option<String>,
+    oci: Option<bool>,
 }
 
 pub(crate) async fn gb_serve_graph(
     data: web::Data<AppState>,
     web::Query(query): web::Query<GraphQuery>,
 ) -> Result<HttpResponse, failure::Error> {
-    let scope = match commons::web::validate_scope(query.basearch, query.stream, &data.scope_filter)
-    {
+    let scope = match commons::web::validate_scope(
+        query.basearch,
+        query.stream,
+        query.oci,
+        &data.scope_filter,
+    ) {
         Err(e) => {
             log::error!("graph request with invalid scope: {}", e);
             return Ok(HttpResponse::BadRequest().finish());
         }
         Ok(s) => {
             log::trace!(
-                "serving request for valid scope: basearch='{}', stream='{}'",
+                "serving request for valid scope: basearch='{}', stream='{}', oci='{}'",
                 s.basearch,
-                s.stream
+                s.stream,
+                s.oci,
             );
             s
         }
     };
 
-    let addr = match data.scrapers.get(&scope) {
+    let addr = match data.scrapers.get(&scope.stream) {
         None => {
             log::error!(
                 "no scraper configured for scope: basearch='{}', stream='{}'",

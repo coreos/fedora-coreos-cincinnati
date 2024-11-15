@@ -26,6 +26,7 @@ pub fn build_cors_middleware(origin_allowlist: &Option<Vec<String>>) -> CorsFact
 pub fn validate_scope(
     basearch: Option<String>,
     stream: Option<String>,
+    oci: Option<bool>,
     scope_allowlist: &Option<HashSet<GraphScope>>,
 ) -> Result<GraphScope, failure::Error> {
     let basearch = basearch.ok_or_else(|| err_msg("missing basearch"))?;
@@ -34,15 +35,22 @@ pub fn validate_scope(
     let stream = stream.ok_or_else(|| err_msg("missing stream"))?;
     ensure!(!stream.is_empty(), "empty stream");
 
-    let scope = GraphScope { basearch, stream };
+    let oci = oci.unwrap_or_default();
+
+    let scope = GraphScope {
+        basearch,
+        stream,
+        oci,
+    };
 
     // Optionally filter out scope according to given allowlist, if any.
     if let Some(allowlist) = scope_allowlist {
         if !allowlist.contains(&scope) {
             bail!(
-                "scope not allowed: basearch='{}', stream='{}'",
+                "scope not allowed: basearch='{}', stream='{}', oci='{}'",
                 scope.basearch,
-                scope.stream
+                scope.stream,
+                scope.oci,
             );
         }
     }
@@ -57,26 +65,28 @@ mod tests {
     #[test]
     fn test_validate_scope() {
         {
-            let r = validate_scope(None, None, &None);
+            let r = validate_scope(None, None, None, &None);
             assert!(r.is_err());
         }
         {
             let basearch = Some("test_empty".to_string());
             let stream = Some("".to_string());
-            let r = validate_scope(basearch, stream, &None);
+            let oci = None;
+            let r = validate_scope(basearch, stream, oci, &None);
             assert!(r.is_err());
         }
         {
             let basearch = Some("x86_64".to_string());
             let stream = Some("stable".to_string());
-            let r = validate_scope(basearch, stream, &None);
+            let oci = Some(false);
+            let r = validate_scope(basearch, stream, oci, &None);
             assert!(r.is_ok());
         }
         {
             let basearch = Some("x86_64".to_string());
             let stream = Some("stable".to_string());
             let filter_none_allowed = Some(HashSet::new());
-            let r = validate_scope(basearch, stream, &filter_none_allowed);
+            let r = validate_scope(basearch, stream, None, &filter_none_allowed);
             assert!(r.is_err());
         }
         {
@@ -85,9 +95,10 @@ mod tests {
             let allowed_scope = GraphScope {
                 basearch: "x86_64".to_string(),
                 stream: "stable".to_string(),
+                oci: false,
             };
             let filter = Some(maplit::hashset! {allowed_scope});
-            let r = validate_scope(basearch, stream, &filter);
+            let r = validate_scope(basearch, stream, None, &filter);
             assert!(r.is_ok());
         }
     }

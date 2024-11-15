@@ -37,15 +37,35 @@ impl Graph {
                     },
                 };
                 let mut has_basearch = false;
-                for commit in entry.commits {
-                    if commit.architecture != scope.basearch || commit.checksum.is_empty() {
-                        continue;
+                if scope.oci {
+                    if let Some(oci_images) = entry.oci_images {
+                        for oci_image in oci_images {
+                            if oci_image.architecture != scope.basearch
+                                || oci_image.digest_ref.is_empty()
+                            {
+                                continue;
+                            }
+                            has_basearch = true;
+                            current.payload = oci_image.digest_ref;
+                            current
+                                .metadata
+                                .insert(metadata::SCHEME.to_string(), "oci".to_string());
+                        }
+                    } else {
+                        // This release doesn't have OCI images, skip it.
+                        return None;
                     }
-                    has_basearch = true;
-                    current.payload = commit.checksum;
-                    current
-                        .metadata
-                        .insert(metadata::SCHEME.to_string(), "checksum".to_string());
+                } else {
+                    for commit in entry.commits {
+                        if commit.architecture != scope.basearch || commit.checksum.is_empty() {
+                            continue;
+                        }
+                        has_basearch = true;
+                        current.payload = commit.checksum;
+                        current
+                            .metadata
+                            .insert(metadata::SCHEME.to_string(), "checksum".to_string());
+                    }
                 }
 
                 // Not a valid release payload for this graph scope, skip it.
@@ -210,4 +230,5 @@ impl Graph {
 pub struct GraphScope {
     pub basearch: String,
     pub stream: String,
+    pub oci: bool,
 }

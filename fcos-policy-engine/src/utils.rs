@@ -19,6 +19,7 @@ pub(crate) async fn fetch_graph_from_gb(
     upstream_base: reqwest::Url,
     stream: String,
     basearch: String,
+    oci: bool,
     req_timeout: Duration,
 ) -> Result<graph::Graph, Error> {
     if stream.trim().is_empty() {
@@ -32,6 +33,7 @@ pub(crate) async fn fetch_graph_from_gb(
         basearch: Some(basearch),
         rollout_wariness: None,
         node_uuid: None,
+        oci: Some(oci),
     };
     // Cannot use `?` directly here otherwise will produce the error:
     //   the trait `std::marker::Sync` is not implemented for `(dyn std::error::Error + std::marker::Send + 'static)`

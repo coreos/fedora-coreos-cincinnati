@@ -130,6 +130,7 @@ pub struct GraphQuery {
     stream: Option<String>,
     rollout_wariness: Option<String>,
     node_uuid: Option<String>,
+    oci: Option<bool>,
 }
 
 pub(crate) async fn pe_serve_graph(
@@ -141,6 +142,7 @@ pub(crate) async fn pe_serve_graph(
     let scope = match commons::web::validate_scope(
         query.basearch.clone(),
         query.stream.clone(),
+        query.oci,
         &data.scope_filter,
     ) {
         Err(e) => {
@@ -160,6 +162,7 @@ pub(crate) async fn pe_serve_graph(
         data.upstream_endpoint.clone(),
         scope.stream,
         scope.basearch,
+        scope.oci,
         data.upstream_req_timeout,
     )
     .await?;
@@ -187,7 +190,7 @@ fn compute_wariness(params: &GraphQuery) -> f64 {
         .unwrap_or_default()
         .parse::<f64>()
     {
-        let wariness = input.max(0.0).min(1.0);
+        let wariness = input.clamp(0.0, 1.0);
         return wariness;
     }
 
@@ -204,9 +207,9 @@ fn compute_wariness(params: &GraphQuery) -> f64 {
         uuid.hash(&mut hasher);
         let digest = hasher.finish();
         // Scale down.
-        let scaled = (digest as f64) / (std::u64::MAX as f64);
+        let scaled = (digest as f64) / (u64::MAX as f64);
         // Clamp within limits.
-        scaled.max(COMPUTED_MIN).min(COMPUTED_MAX)
+        scaled.clamp(COMPUTED_MIN, COMPUTED_MAX)
     };
 
     wariness
