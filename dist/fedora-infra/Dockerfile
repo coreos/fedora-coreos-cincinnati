@@ -1,4 +1,4 @@
-FROM registry.fedoraproject.org/fedora:40
+FROM registry.fedoraproject.org/fedora:41
 
 # build: system utilities and libraries
 RUN dnf -y install g++ openssl-devel
