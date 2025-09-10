@@ -31,7 +31,7 @@ pub struct ReleasesJSON {
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct Release {
-    pub commits: Vec<ReleaseCommit>,
+    pub commits: Option<Vec<ReleaseCommit>>,
     #[serde(rename = "oci-images")]
     pub oci_images: Option<Vec<ReleaseOciImage>>,
     pub version: String,
