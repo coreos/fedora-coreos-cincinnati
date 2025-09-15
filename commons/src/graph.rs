@@ -56,15 +56,26 @@ impl Graph {
                         return None;
                     }
                 } else {
-                    for commit in entry.commits {
-                        if commit.architecture != scope.basearch || commit.checksum.is_empty() {
-                            continue;
+                    match entry.commits {
+                        Some(commits) if !commits.is_empty() => {
+                            for commit in commits {
+                                if commit.architecture != scope.basearch
+                                    || commit.checksum.is_empty()
+                                {
+                                    continue;
+                                }
+                                has_basearch = true;
+                                current.payload = commit.checksum;
+                                current
+                                    .metadata
+                                    .insert(metadata::SCHEME.to_string(), "checksum".to_string());
+                            }
                         }
-                        has_basearch = true;
-                        current.payload = commit.checksum;
-                        current
-                            .metadata
-                            .insert(metadata::SCHEME.to_string(), "checksum".to_string());
+                        _ => {
+                            // catch-all arm for both `None` and `Some(empty_vec)`,
+                            // both cases should result in skipping the release.
+                            return None;
+                        }
                     }
                 }
 
