@@ -1,4 +1,4 @@
-FROM quay.io/fedora/fedora:42
+FROM quay.io/fedora/fedora:43
 
 # build: system utilities and libraries
 RUN dnf -y install g++ openssl-devel
