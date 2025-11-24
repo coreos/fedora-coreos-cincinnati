@@ -1,0 +1,110 @@
+{
+  "43.20251024.3.0": {
+    "x86_64": {
+      "good": "sha256:44528ecc3fe8ab2c2a4d0990cdc0898aca334aa632d4a77f23118f8900435636",
+      "bad": "sha256:ca99893c80a7b84dd84d4143bd27538207c2f38ab6647a58d9c8caa251f9a087"
+    },
+    "aarch64": {
+      "good": "sha256:bba9eff19e3da927c09644eefd42303c4dc7401844cee8e849115466f13b08e9",
+      "bad": "sha256:bb356df5b2a9356c0ec966a35abd0cd8b199c8ddc18b9c70e81baa4c2401796c"
+    },
+    "ppc64le": {
+      "good": "sha256:7119567796344ac0f55ed18ada84f504b008cf45d2165a276d9388efe3b2ed68",
+      "bad": "sha256:79df7ec5156068fc7066561440f1b6bd468307b5f190e3426ad1180039603511"
+    },
+    "s390x": {
+      "good": "sha256:6fe9f2d0a4e611e98f5c1d340f86e9a9839fe32f0a210ed5a2502308870871de",
+      "bad": "sha256:c02814c3a49dffa5150609209e2bcc5ed3e708b2be3ba732b66bda619c36f0ac"
+    }
+  },
+  "43.20251024.2.0": {
+    "x86_64": {
+      "good": "sha256:206d8bd241ed75329d4ab35f73d244c757112a846bd158972287c9bf22c37b19",
+      "bad": "sha256:8aeabcbfbdf432c657f55cf6f247adf188606db5e0034a922f75d90229c4b9ba"
+    },
+    "aarch64": {
+      "good": "sha256:eff5b8be876cca882a9862f44235c42f53215dbb5290391e7d606015f89ca0ca",
+      "bad": "sha256:cf77c783f8fad63ce2c546ac274576b67c0502dd2546160b3bc286260ebaa30c"
+    },
+    "ppc64le": {
+      "good": "sha256:8848ade6a061d0ca393abf9d257c74de7c8c01ca2c7f52dd6d0e99affe4094fb",
+      "bad": "sha256:1c5fcba935cdc8e76a79ec6d9904cdd66be4a84721e5cbed8e756e9c6f1c3e86"
+    },
+    "s390x": {
+      "good": "sha256:ad2bfeae0a677346de25ed89bb7a15e578b23e62c5b19f09ab96e76020e849c9",
+      "bad": "sha256:b4e96ede2fb324dbb5509700ed516bbaf6604242bf3b85bc87f10372f2235e2d"
+    }
+  },
+  "43.20251110.2.0": {
+    "x86_64": {
+      "good": "sha256:beaf03ab8a2996277ca639cd107212e79b21fb48d28a46da7279129ea8627814",
+      "bad": "sha256:d124db75754b48750f28d9c81ec27b01ad81ff834032ac43e287b45ec98cc905"
+    },
+    "aarch64": {
+      "good": "sha256:854745b12ddea3dd607b5073083e8f6371017fbdd905d564b0b750892b2d7e0f",
+      "bad": "sha256:369dd94edc36dfb461eb4a05d0b05df10d74208eff7107ce58d7244205023280"
+    },
+    "ppc64le": {
+      "good": "sha256:698326f0b7bcb7db4fc00afedba026924a45c4360a2c0d4c9647c2f5d0d289d3",
+      "bad": "sha256:54b1aeeb240954f9ac3456ae334f96fcb6f5a8256de33d166ca4d418d02373cd"
+    },
+    "s390x": {
+      "good": "sha256:b49ce46cd6b96984f25268aba87be345357303e429ff669bb48db644d466cf8a",
+      "bad": "sha256:ce31221559e9eb304147cb8d2530103538c0536113c8214d6e431cf1d67b953a"
+    }
+  },
+  "43.20251024.1.0": {
+    "x86_64": {
+      "good": "sha256:92f750c7b4e69fe9ee05173fcd64b688042007edcd93854c9e1a7143aaaefbac",
+      "bad": "sha256:d1bb889a3b6b2f18b04640359d32bc2e3d662499b66c44b7332e0c4746f37342"
+    },
+    "aarch64": {
+      "good": "sha256:39937b019590f5dc0f22de502abe7dda3faf491f7a6c12c25ada3c8ba33c1f43",
+      "bad": "sha256:d54697a5760ece8bebbed51ff283b9a710ac9665ece4bdbb7115270ef5483ac6"
+    },
+    "ppc64le": {
+      "good": "sha256:79c1eafa01d58df521806084859a76de4856aa0fc4403b6ffd1434988a2c45f3",
+      "bad": "sha256:a9dc410bded576283b8d99a9565979715cd3fb4269d8cd023566e63753bf8b25"
+    },
+    "s390x": {
+      "good": "sha256:b6030886a39c9b2c2168fa1f84cf65e9bd6ed25eff146292716df7879de79b5f",
+      "bad": "sha256:dc1097ff0df3671ba0079c059f78de2a2fe90a4bd9cd4a83ed7af92d6804665d"
+    }
+  },
+  "43.20251027.1.0": {
+    "x86_64": {
+      "good": "sha256:a8ccd268e4ffd2241f4a29e7683f97cfacaf1c84b48314b41b325038d7775f33",
+      "bad": "sha256:b7d3fa44789c700a6544c1ede17d1e66b32edd476cfe6e4798b24d7e7acde04b"
+    },
+    "aarch64": {
+      "good": "sha256:ee141e4bf376c3523557142a2ab52f249fed784fcc4d625908c2de98af88573c",
+      "bad": "sha256:d01f69f0f231e4b6335bf116335d7ffc8428d490608122ca78da43e025c61d0b"
+    },
+    "ppc64le": {
+      "good": "sha256:87e0b9a5e9f92a857bc29c5eb9e9723cdc0298e6d342a0b6cced9797836c08d8",
+      "bad": "sha256:2a49d71fe9517d635935ed8e09055ed39a53d67405c578657020a0ae783f7533"
+    },
+    "s390x": {
+      "good": "sha256:b83a45f1d837b9ed2318c313754fdfefa28af3583d64edca953362cec674010b",
+      "bad": "sha256:402787f3cb3b76cfc5b34cec6a3e5a73baa99ffacbef294569bba90d7cb48f01"
+    }
+  },
+  "43.20251110.1.0": {
+    "x86_64": {
+      "good": "sha256:441e88ad05bf4eca61e5802248aa8e79089fe060686fe6fe90b0ea8f90b7e839",
+      "bad": "sha256:e5e865a5c1643ffecbccf8b7abe24bc57db4b0469acc697bb6ca6abe4c5ea14c"
+    },
+    "aarch64": {
+      "good": "sha256:a95f637ff7fcf4f06d24060a8a7fe582cc9b9133eacb666f7d848f389d3a7fe6",
+      "bad": "sha256:9cac4529affce183c4b8af61050391127a816f1766264c02b78dbad97ff67514"
+    },
+    "ppc64le": {
+      "good": "sha256:17766ebf6e96e860fb7c87e9cda038d9cc02aa447f483ba543c3f48e5e84f314",
+      "bad": "sha256:10779dabd8a9b094d358a9769fc7606c07cd50a459ec27f514a83fbcb0a53539"
+    },
+    "s390x": {
+      "good": "sha256:2011cb2d8baa33064a769d4da596accfb179a690d971ffe16924ea832d35b5ab",
+      "bad": "sha256:ee3e72931587bcc0ff36fa82f5e2beb4d5695caac49ff9c3f4b7562224f94cb1"
+    }
+  }
+}

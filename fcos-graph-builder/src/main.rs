@@ -7,6 +7,7 @@ mod cli;
 mod config;
 mod scraper;
 mod settings;
+mod workaround_issue_2066;
 
 use actix::prelude::*;
 use actix_web::{web, App, HttpResponse};
