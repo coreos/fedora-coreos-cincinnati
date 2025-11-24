@@ -5,7 +5,10 @@ use failure::{Error, Fallible};
 use reqwest::Method;
 use std::collections::HashMap;
 use std::num::NonZeroU64;
+use std::sync::Arc;
 use std::time::Duration;
+
+use crate::workaround_issue_2066::DigestsMapper;
 
 /// Default timeout for HTTP requests (30 minutes).
 const DEFAULT_HTTP_REQ_TIMEOUT: Duration = Duration::from_secs(30 * 60);
@@ -22,6 +25,9 @@ pub struct Scraper {
     pause_secs: NonZeroU64,
     release_index_url: reqwest::Url,
     updates_url: reqwest::Url,
+    // hotfix to serve out fake graphs to unstick nodes
+    // see https://github.com/coreos/fedora-coreos-tracker/issues/2066
+    bad_digests_mapper: Arc<DigestsMapper>,
 }
 
 impl Scraper {
@@ -50,6 +56,7 @@ impl Scraper {
             .timeout(DEFAULT_HTTP_REQ_TIMEOUT)
             .build()?;
 
+        let bad_digests_mapper = Arc::new(DigestsMapper::new_from_file()?);
         let scraper = Self {
             graphs,
             oci_graphs,
@@ -58,6 +65,7 @@ impl Scraper {
             stream,
             release_index_url: reqwest::Url::parse(&releases_json)?,
             updates_url: reqwest::Url::parse(&updates_json)?,
+            bad_digests_mapper,
         };
         Ok(scraper)
     }
@@ -113,9 +121,25 @@ impl Scraper {
         let stream = self.stream.clone();
         let arches: Vec<String> = self.graphs.keys().cloned().collect();
 
+        // The Arc is a shared pointer we can clone for cheap before passing it into
+        // the async block which will own it
+        let bad_digests_mapper = self.bad_digests_mapper.clone();
+
         async move {
             let (graph, updates) =
                 futures::future::try_join(stream_releases, stream_updates).await?;
+
+            // patch some digests to unstick nodes that booted with the wrong OCI digests
+            // See https://github.com/coreos/fedora-coreos-tracker/issues/2066
+            let graph = if bad_digests_mapper.should_patch() {
+                let mut graph = graph;
+                bad_digests_mapper.fix_releases(&mut graph);
+                graph
+            } else {
+                log::info!("Not patching the graph");
+                graph
+            };
+
             // first the legacy graphs
             let mut map = HashMap::with_capacity(arches.len());
             for arch in &arches {

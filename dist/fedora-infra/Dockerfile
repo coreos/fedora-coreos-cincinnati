@@ -18,5 +18,8 @@ RUN cargo build --release && \
 # build: cleanup
 RUN cargo clean
 
+# temporary: fix the invalid bootimages digests
+RUN cp /src/dist/fedora-infra/bootimages_digests.json /data.json
+
 # run: default config
 WORKDIR /
