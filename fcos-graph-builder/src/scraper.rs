@@ -100,6 +100,7 @@ impl Scraper {
     }
 
     /// Combine release-index and updates metadata.
+    #[allow(clippy::type_complexity)]
     fn assemble_graphs(
         &self,
     ) -> impl Future<
