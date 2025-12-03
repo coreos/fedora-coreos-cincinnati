@@ -20,7 +20,7 @@ env:
   # Minimum supported Rust version (MSRV)
   MSRV: 1.87.0
   # Pinned toolchain for linting
-  ACTIONS_LINTS_TOOLCHAIN: 1.84.1
+  ACTIONS_LINTS_TOOLCHAIN: 1.87.0
 
 jobs:
   tests-stable:
