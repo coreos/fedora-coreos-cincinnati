@@ -2,7 +2,7 @@
 name = "fcos-graph-builder"
 version = "0.1.0"
 authors = ["Allen Bai <abai@redhat.com>"]
-edition = "2018"
+edition = "2021"
 publish = false
 
 [dependencies]
