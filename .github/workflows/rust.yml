@@ -18,7 +18,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   # Minimum supported Rust version (MSRV)
-  MSRV: 1.84.0
+  MSRV: 1.87.0
   # Pinned toolchain for linting
   ACTIONS_LINTS_TOOLCHAIN: 1.84.1
 
