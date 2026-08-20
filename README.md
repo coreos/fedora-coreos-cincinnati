@@ -17,4 +17,4 @@ The instance of this service used by default on Fedora CoreOS is hosted in the F
 [cincinnati]: https://github.com/openshift/cincinnati
 [zincati]: https://github.com/coreos/zincati
 [quickstart]: https://github.com/coreos/fedora-coreos-cincinnati/blob/main/docs/quickstart.md
-[infra-docs]: https://docs.fedoraproject.org/en-US/infra/sysadmin_guide/coreos-cincinnati/
+[infra-docs]: https://docs.fedoraproject.org/en-US/infra/sysadmin_sops/coreos-cincinnati/
